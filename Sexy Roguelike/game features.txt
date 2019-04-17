@@ -1,0 +1,26 @@
+Map
+	TODO Hidden Rooms
+		TODO Illusory Walls
+			TODO Dispeled
+			TODO Walked through
+		TODO Destructable Walls
+			TODO Exploded
+			TODO Attacked
+	TODO Campsites
+	TODO Zones
+		TODO Boss Rooms
+	TODO Town
+	TODO Home Base
+Character
+	TODO Classes
+		Wizard
+			Low Physical Stats
+			Access to Powerful Spells that regenerate after camping
+		Rogue
+			Stealth Based
+		Warlock
+			Access to more magic
+	TODO
+Resource Management
+	Torches
+	Food
