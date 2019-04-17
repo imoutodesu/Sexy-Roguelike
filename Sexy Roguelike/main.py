@@ -17,12 +17,14 @@ class struc_Assets:
 		#spritesheets
 		self.player0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player0.png")
 		self.player1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player1.png")
+		self.undead0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead0.png")
+		self.undead1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead1.png")
 
 		#animations
 		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16)
 		self.A_PLAYER += self.player1_sheet.get_image(0, 7, 16, 16)
-		self.A_GOBLIN = self.player0_sheet.get_image(1, 14, 16, 16)
-		self.A_GOBLIN += self.player1_sheet.get_image(1, 14, 16, 16)
+		self.A_ZOMBIE = self.undead0_sheet.get_image(5, 0, 16, 16)
+		self.A_ZOMBIE += self.undead1_sheet.get_image(5, 0, 16, 16)
 
 		#sprites
 		self.S_FLOOR = pygame.image.load("data/tiles/floor.png")
@@ -39,7 +41,16 @@ class struc_Assets:
 #OBJECTS
 
 class obj_Actor:
-	def __init__(self, x, y, animation, object_type, animation_speed = 1.0, creature = None, ai = None):
+	def __init__(self,
+				x, y,
+				animation,
+				object_type,
+				animation_speed = 1.0,
+				creature = None,
+				ai = None,
+				container = None,
+				item = None):
+		
 		self.x = x #map address not pixel address
 		self.y = y
 		
@@ -54,16 +65,25 @@ class obj_Actor:
 		
 		self.creature = creature
 		if creature:
-			creature.owner = self
+			self.creature.owner = self
 		
 		self.ai = ai
 		if ai:
-			ai.owner = self
+			self.ai.owner = self
+		
+		self.container = container
+		if container:
+			self.container.owner = self
+		
+		self.item = item
+		if item:
+			self.item.owner = self
+	
 	#draws the actor
 	def draw(self):
 		is_visible = libtcod.map_is_in_fov(FOV_MAP, self.x, self.y)
 		if is_visible:
-			if len(self.animation) == 1:
+			if len(self.animation) <= 1:
 				SURFACE_MAIN.blit(self.animation[0], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
 			elif len(self.animation) > 1:
 				if CLOCK.get_fps() > 0.0:
@@ -75,7 +95,6 @@ class obj_Actor:
 					else:
 						self.sprite_image +=1
 				SURFACE_MAIN.blit(self.animation[self.sprite_image], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
-
 
 class obj_Game:
 	def __init__(self):
@@ -165,10 +184,40 @@ class com_Creature:
 			if self.death_function is not None:
 				self.death_function(self.owner)
 
+class com_Item:
+	def __init__(self, weight = 0.00, volume = 0.0):
+		self.weight = weight
+		self.volume = volume
+	#todo pick up item
+	def pick_up(self, actor):
+		if actor.container:
+			if actor.container.volume + self.volume > actor.container.max_volume:
+				game_message("Not enough room.", constants.COLOR_WHITE)
+			else:
+				game_message("Picking up", constants.COLOR_WHITE)
+				actor.container.inventory.append(self.owner)
+				GAME.current_objects.remove(self.owner)
+				self.container = actor.container
+	#drop item
+	def drop(self):
+		GAME.current_objects.append(self.owner)
+		self.container.inventory.remove(self.owner)
+		game("Item Dropped", constants.COLOR_WHITE)
+	#todo use item
 
-#class com_Items:
+class com_Container:
+	def __init__(self, volume = 10.00, inventory = [], weight = 0.00):
+		self.inventory = inventory
+		self.max_volume = volume
+		self.weight = weight
 
-#class com_Container:
+	# TODO Get names of everything in inventory
+	# TODO get volume within container
+	@property
+	def volume(self):
+		return 0.0
+	
+	# Todo get weight of everything in inventory
 
 #AI
 class com_AI_Test:
@@ -179,6 +228,7 @@ def death_monster(monster):
 	game_message(monster.creature.name_instance + " has died!", constants.COLOR_WHITE)
 	monster.creature = None
 	monster.ai = None
+	monster.animation = [monster.animation[0]]
 
 
 #MAP
@@ -223,6 +273,11 @@ def map_calculate_fov():
 	if FOV_CALCULATE:
 		FOV_CALCULATE = False
 		libtcod.map_compute_fov(FOV_MAP, PLAYER.x, PLAYER.y, constants.SIGHT_RADIUS, constants. FOV_LIGHT_WALLS, constants.FOV_ALGO)
+
+def map_objects_at_coords(coords_x, coords_y):
+	object_options = [obj for obj in GAME.current_objects
+						if obj.x == coords_x and obj.y == coords_y]
+	return object_options
 
 #DRAWING
 
@@ -336,7 +391,7 @@ def game_main_loop():
 
 def game_initialize():
 	"""This functions initiatlizes the main window in pygame"""
-	global SURFACE_MAIN, GAME, PLAYER, FOV_CALCULATE, CLOCK, ASSETS
+	global SURFACE_MAIN, GAME, PLAYER, FOV_CALCULATE, CLOCK, ASSETS, BASE_ZOMBIE
 
 	pygame.init()
 
@@ -350,14 +405,16 @@ def game_initialize():
 
 	ASSETS = struc_Assets()
 
+	container_com_test = com_Container
 	player_com = com_Creature("Arion")
-	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", creature = player_com)
+	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", creature = player_com, container = container_com_test())
 
-	goblin_AI_Test = com_AI_Test
-	goblin_com = com_Creature("Garry", death_function = death_monster)
-	BASE_GOBLIN = obj_Actor(15, 15, ASSETS.A_GOBLIN, "Goblin", creature = goblin_com, ai = goblin_AI_Test)
+	item_com_test = com_Item
+	zombie_AI_Test = com_AI_Test
+	zombie_com = com_Creature("Zack", death_function = death_monster)
+	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "zombie", creature = zombie_com, ai = zombie_AI_Test, item = item_com_test)
 
-	GAME.current_objects = [PLAYER, BASE_GOBLIN]
+	GAME.current_objects = [PLAYER, BASE_ZOMBIE]
 
 def handle_player_input():
 	global FOV_CALCULATE
@@ -371,14 +428,26 @@ def handle_player_input():
 		if event.type == pygame.KEYDOWN:
 			if event.key == pygame.K_UP:
 				PLAYER.creature.move(0, -1)
+				FOV_CALCULATE = True
+				return "player-moved"
 			if event.key == pygame.K_DOWN:
 				PLAYER.creature.move(0, 1)
+				FOV_CALCULATE = True
+				return "player-moved"
 			if event.key == pygame.K_LEFT:
 				PLAYER.creature.move(-1, 0)
+				FOV_CALCULATE = True
+				return "player-moved"
 			if event.key == pygame.K_RIGHT:
 				PLAYER.creature.move(1, 0)
-			FOV_CALCULATE = True
-			return "player-moved"
+				FOV_CALCULATE = True
+				return "player-moved"
+			if event.key == pygame.K_g:
+				objects_at_player = map_objects_at_coords(PLAYER.x, PLAYER.y)
+				for obj in objects_at_player:
+					if obj.item:
+						obj.item.pick_up(PLAYER)
+			
 	return "no-action"
 
 def game_message(game_msg, msg_color):

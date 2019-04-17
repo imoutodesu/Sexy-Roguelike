@@ -1,18 +1,18 @@
 Map
-	TODO Hidden Rooms
-		TODO Illusory Walls
-			TODO Dispeled
-			TODO Walked through
-		TODO Destructable Walls
-			TODO Exploded
-			TODO Attacked
-	TODO Campsites
-	TODO Zones
-		TODO Boss Rooms
-	TODO Town
-	TODO Home Base
+	Hidden Rooms
+		Illusory Walls
+			Dispeled
+			Walked through
+		Destructable Walls
+			Exploded
+			Attacked
+	Campsites
+	Zones
+		Boss Rooms
+	Town
+	Home Base
 Character
-	TODO Classes
+	Classes
 		Wizard
 			Low Physical Stats
 			Access to Powerful Spells that regenerate after camping
@@ -21,6 +21,8 @@ Character
 		Warlock
 			Access to more magic
 	TODO
+Enemies
+	Combat AI vs Idle AI
 Resource Management
 	Torches
 	Food
