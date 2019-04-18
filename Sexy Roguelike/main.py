@@ -191,13 +191,13 @@ class com_Item:
 	#todo pick up item
 	def pick_up(self, actor):
 		if actor.container:
-			if actor.container.volume + self.volume > actor.container.max_volume:
+			"""if actor.container.volume + self.volume > actor.container.max_volume:
 				game_message("Not enough room.", constants.COLOR_WHITE)
-			else:
-				game_message("Picking up", constants.COLOR_WHITE)
-				actor.container.inventory.append(self.owner)
-				GAME.current_objects.remove(self.owner)
-				self.container = actor.container
+			else:"""
+			game_message("Picking up", constants.COLOR_WHITE)
+			actor.container.inventory.append(self.owner)
+			GAME.current_objects.remove(self.owner)
+				
 	#drop item
 	def drop(self):
 		GAME.current_objects.append(self.owner)
@@ -446,7 +446,7 @@ def handle_player_input():
 				objects_at_player = map_objects_at_coords(PLAYER.x, PLAYER.y)
 				for obj in objects_at_player:
 					if obj.item:
-						obj.item.pick_up(PLAYER)
+						obj.item.pick_up(self = obj.item, actor = PLAYER)
 			
 	return "no-action"
 
