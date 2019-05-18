@@ -26,3 +26,5 @@ Enemies
 Resource Management
 	Torches
 	Food
+	carrying capacity (container wieght plus the weight of everything in it)
+		container upgrades (bagof holding, holds increasing weight without calculating it)

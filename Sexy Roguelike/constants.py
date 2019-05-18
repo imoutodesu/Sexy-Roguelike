@@ -5,12 +5,12 @@ import libtcodpy as libtcod
 pygame.init()
 
 #MAP VARS
-MAP_WIDTH = 30
-MAP_HEIGHT = 30
+MAP_WIDTH = 20
+MAP_HEIGHT = 20
 
 #game sizes
-CELL_WIDTH = 16
-CELL_HEIGHT = 16
+CELL_WIDTH = 32
+CELL_HEIGHT = 32
 GAME_WIDTH = MAP_WIDTH * CELL_WIDTH
 GAME_HEIGHT = MAP_HEIGHT * CELL_HEIGHT
 
@@ -26,9 +26,16 @@ COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_GREY = (100, 100, 100)
 COLOR_RED = (255, 0, 0)
+COLOR_GREEN = (0, 255, 0)
+COLOR_BLUE = (0, 0, 255)
 
 #game colors
 COLOR_DEFAULT_BG = COLOR_GREY
 
 #Message Defaults
 NUM_MESSAGES = 4
+
+
+#fonts
+FONT_DEBUG = pygame.font.Font("data/joystix.ttf", 16)
+FONT_MESSAGES = pygame.font.Font("data/joystix.ttf", 12)

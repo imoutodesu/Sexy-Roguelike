@@ -1,6 +1,8 @@
-#3rd party modules
+#modules
 import libtcodpy as libtcod
 import pygame
+import textwrap
+import math
 
 #game files
 import constants
@@ -21,30 +23,34 @@ class struc_Assets:
 		self.undead1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead1.png")
 
 		#animations
-		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16)
-		self.A_PLAYER += self.player1_sheet.get_image(0, 7, 16, 16)
-		self.A_ZOMBIE = self.undead0_sheet.get_image(5, 0, 16, 16)
-		self.A_ZOMBIE += self.undead1_sheet.get_image(5, 0, 16, 16)
+		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.A_PLAYER += self.player1_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.A_ZOMBIE = self.undead0_sheet.get_image(5, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.A_ZOMBIE += self.undead1_sheet.get_image(5, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 		#sprites
-		self.S_FLOOR = pygame.image.load("data/tiles/floor.png")
-		self.S_FLOOR_EXPLORED = pygame.image.load("data/tiles/floorexplored.png")
+		self.floor_sheet = obj_SpriteSheet("data/tiles/floor.png")
+		self.floor_sheet2 =obj_SpriteSheet("data/tiles/floorexplored.png")
 
-		self.S_WALL = pygame.image.load("data/tiles/wall.png")
-		self.S_WALL_EXPLORED = pygame.image.load("data/tiles/wallexplored.png")
+		self.S_FLOOR = self.floor_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_FLOOR_EXPLORED = self.floor_sheet2.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
-		#fonts
-		self.FONT_DEBUG = pygame.font.Font("data/joystix.ttf", 16)
-		self.FONT_MESSAGES = pygame.font.Font("data/joystix.ttf", 12)
+
+		self.wall_sheet = obj_SpriteSheet("data/tiles/wall.png")
+		self.wall_sheet2 =obj_SpriteSheet("data/tiles/wallexplored.png")
+
+		self.S_WALL = self.wall_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_WALL_EXPLORED = self.wall_sheet2.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
 
 
 #OBJECTS
-
 class obj_Actor:
 	def __init__(self,
 				x, y,
 				animation,
 				object_type,
+				object_name,
 				animation_speed = 1.0,
 				creature = None,
 				ai = None,
@@ -62,6 +68,7 @@ class obj_Actor:
 		self.sprite_image = 0
 
 		self.object_type = object_type
+		self.object_name = object_name
 		
 		self.creature = creature
 		if creature:
@@ -95,6 +102,20 @@ class obj_Actor:
 					else:
 						self.sprite_image +=1
 				SURFACE_MAIN.blit(self.animation[self.sprite_image], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
+
+	def distance_to(self, x, y):
+		dx = x - self.x
+		dy = y - self.y
+		return math.sqrt((dx**2)+(dy**2))
+
+	def move_towards(self, x, y):
+		dx = x - self.x
+		dy = y - self.y
+		distance = math.sqrt((dx**2)+(dy**2))
+		dx = int(round(dx/distance))
+		dy = int(round(dy/distance))
+		self.creature.move(dx, dy)
+
 
 class obj_Game:
 	def __init__(self):
@@ -149,6 +170,8 @@ class obj_SpriteSheet:
 
 		return image_list
 
+
+
 #COMPONENTS
 class com_Creature:
 	"""
@@ -157,7 +180,7 @@ class com_Creature:
 	creatures can die
 	creatures can move
 	"""
-	def __init__(self, name_instance, hp = 10, damage = 5, death_function = None):
+	def __init__(self, name_instance, hp = 10, damage = 3, death_function = None):
 		self.name_instance = name_instance
 		self.maxhp = hp
 		self.hp = hp
@@ -173,6 +196,7 @@ class com_Creature:
 		if tile_is_walkable and TARGET is None:
 			self.owner.x += dx
 			self.owner.y += dy
+
 	def attack(self, TARGET, damage):
 		game_message(self.name_instance + " attacks " + TARGET.creature.name_instance, constants.COLOR_WHITE)
 		TARGET.creature.take_damage(self.damage)
@@ -184,32 +208,63 @@ class com_Creature:
 			if self.death_function is not None:
 				self.death_function(self.owner)
 
+	def heal(self, healing):
+		overflow = 0
+		if self.maxhp <= self.hp:
+			game_message(self.creature.name_instance + " is already at full health!")
+		else:
+			if self.maxhp < (self.hp + healing):
+				overflow = (self.hp + healing) - self.maxhp
+				self.hp = self.maxhp
+				game_message(self.name_instance + " is healed for " + str(healing-overflow))
+			else: 
+				self.hp += healing
+				game_message(self.name_instance + " is healed for " + str(healing))
+
 class com_Item:
-	def __init__(self, weight = 0.00, volume = 0.0):
+	def __init__(self, weight = 0.00, volume = 0.0, use_function = None, use_func_helper = None):
 		self.weight = weight
 		self.volume = volume
-	#todo pick up item
+		self.use_function = use_function
+		self.use_func_helper = use_func_helper
+		self.current_container = None
+	#pick up item
 	def pick_up(self, actor):
 		if actor.container:
-			"""if actor.container.volume + self.volume > actor.container.max_volume:
+			if actor.container.volume + self.volume > actor.container.max_volume:
 				game_message("Not enough room.", constants.COLOR_WHITE)
-			else:"""
-			game_message("Picking up", constants.COLOR_WHITE)
-			actor.container.inventory.append(self.owner)
-			GAME.current_objects.remove(self.owner)
-				
+			else:
+				game_message("Picking up", constants.COLOR_WHITE)
+				actor.container.inventory.append(self.owner)
+				GAME.current_objects.remove(self.owner)
+				self.current_container = actor.container
+					
 	#drop item
-	def drop(self):
+	def drop(self, new_x, new_y):
 		GAME.current_objects.append(self.owner)
-		self.container.inventory.remove(self.owner)
-		game("Item Dropped", constants.COLOR_WHITE)
-	#todo use item
+		self.current_container.inventory.remove(self.owner)
+		self.owner.x = new_x
+		self.owner.y = new_y
+		self.current_container = None
+		game_message("Item Dropped", constants.COLOR_WHITE)
+	
+	#use item
+	def use(self):
+		if self.use_function:
+			result = None
+			result = self.use_function(self.current_container.owner, self.use_func_helper)
+			if result == None:
+				print("Error: item " + str(self.owner) + " use_function failed to complete.")
+			elif result == "cancelled":
+				game_message("You can't use that right now.")
+			else:
+				self.current_container.inventory.remove(self.owner)
 
 class com_Container:
 	def __init__(self, volume = 10.00, inventory = [], weight = 0.00):
 		self.inventory = inventory
 		self.max_volume = volume
-		self.weight = weight
+		self.weight = weight 
 
 	# TODO Get names of everything in inventory
 	# TODO get volume within container
@@ -217,18 +272,49 @@ class com_Container:
 	def volume(self):
 		return 0.0
 	
+	
 	# Todo get weight of everything in inventory
 
+
+
 #AI
-class com_AI_Test:
+class com_AI_Confused:
+	def __init__(self, old_ai = None, num_turns = -1):
+		self.old_ai = old_ai
+		self.num_turns = num_turns
+		self.turn_counter = 0
 	def take_Turn(self):
 		self.owner.creature.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
+		self.turn_counter += 1
+		if self.turn_counter == self.num_turns:
+			self.owner.ai = self.old_ai
+
+class com_AI_zombie:
+	def __init__(self, old_ai = None, num_turns = 0):
+		self.old_ai = old_ai
+		self.num_turns = num_turns
+		self.turn_counter = 0
+
+	def take_Turn(self):
+		monster = self.owner
+		if libtcod.map_is_in_fov(FOV_MAP, monster.x, monster.y):
+			if monster.distance_to(PLAYER.x, PLAYER.y) >= 2:
+				monster.move_towards(PLAYER.x, PLAYER.y)
+			elif PLAYER.creature.hp > 0:
+				monster.creature.attack(PLAYER, 3)
+		self.turn_counter += 1
+		if self.turn_counter == self.num_turns:
+			self.owner.ai = old_ai
+
+
+
 
 def death_monster(monster):
 	game_message(monster.creature.name_instance + " has died!", constants.COLOR_WHITE)
 	monster.creature = None
 	monster.ai = None
 	monster.animation = [monster.animation[0]]
+
 
 
 #MAP
@@ -246,7 +332,7 @@ def map_create():
 
 	return new_map
 
-def map_creature_check(x, y, excluded_object):
+def map_creature_check(x, y, excluded_object = None):
 	TARGET = None
 	for object in GAME.current_objects:
 		if (object is not excluded_object and 
@@ -256,6 +342,15 @@ def map_creature_check(x, y, excluded_object):
 			TARGET = object
 		if TARGET:
 			return TARGET
+
+def map_objects_at_coords(coords_x, coords_y):
+	object_options = [obj for obj in GAME.current_objects
+						if obj.x == coords_x and obj.y == coords_y]
+	return object_options
+
+def map_wall_check(x, y):
+	not_wall = GAME.current_map[x][y].walkable
+	return (not_wall)
 
 def map_make_fov(incoming_map):
 	global FOV_MAP
@@ -272,12 +367,42 @@ def map_calculate_fov():
 
 	if FOV_CALCULATE:
 		FOV_CALCULATE = False
-		libtcod.map_compute_fov(FOV_MAP, PLAYER.x, PLAYER.y, constants.SIGHT_RADIUS, constants. FOV_LIGHT_WALLS, constants.FOV_ALGO)
+		libtcod.map_compute_fov(FOV_MAP, PLAYER.x, PLAYER.y, constants.SIGHT_RADIUS, constants.FOV_LIGHT_WALLS, constants.FOV_ALGO)
 
-def map_objects_at_coords(coords_x, coords_y):
-	object_options = [obj for obj in GAME.current_objects
-						if obj.x == coords_x and obj.y == coords_y]
-	return object_options
+def map_find_line(coords_a, coords_b):
+	x1, y1 = coords_a
+	x2, y2 = coords_b
+
+	libtcod.line_init(x1, y1, x2, y2)
+
+	calc_x, calc_y = libtcod.line_step()
+
+	coords_list = []
+
+	if x1 == x2 and y1 == y2:
+		return[(x1, y1)]
+
+	while (not calc_x is None):
+		coords_list.append((calc_x, calc_y))
+		calc_x, calc_y = libtcod.line_step()
+	return coords_list
+
+def map_find_radius(coords, radius):
+	center_x, center_y = coords
+	tile_list = []
+
+	start_x = center_x-radius
+	start_y = center_y-radius
+	end_x = center_x+radius+1
+	end_y = center_y+radius+1
+
+
+	for x in range(start_x, end_x):
+		for y in range(start_y, end_y):
+			tile_list.append((x, y))
+	return tile_list
+
+
 
 #DRAWING
 
@@ -293,9 +418,6 @@ def draw_game():
 
 	draw_debug()
 	draw_messages()
-	#updates the display
-	pygame.display.flip()
-
 
 def draw_map(map_to_draw):
 	for x in range(0, constants.MAP_WIDTH):
@@ -309,17 +431,17 @@ def draw_map(map_to_draw):
 
 				if map_to_draw[x][y].walkable == False:
 					#draw wall
-					SURFACE_MAIN.blit(ASSETS.S_WALL, (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAIN.blit(ASSETS.S_WALL[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 				else:
 					#draw floor
-					SURFACE_MAIN.blit(ASSETS.S_FLOOR, (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAIN.blit(ASSETS.S_FLOOR[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 			elif map_to_draw[x][y].explored:
 				if map_to_draw[x][y].walkable == False:
 					#draw wall
-					SURFACE_MAIN.blit(ASSETS.S_WALL_EXPLORED, (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAIN.blit(ASSETS.S_WALL_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 				else:
 					#draw floor
-					SURFACE_MAIN.blit(ASSETS.S_FLOOR_EXPLORED, (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAIN.blit(ASSETS.S_FLOOR_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 
 def draw_debug():
 	draw_text(SURFACE_MAIN, "FPS: " + str(int(CLOCK.get_fps())), (0, 0), constants.COLOR_WHITE, constants.COLOR_BLACK)
@@ -331,34 +453,266 @@ def draw_messages():
 	else:
 		to_draw = GAME.message_history[-constants.NUM_MESSAGES:]
 
-	text_height = helper_text_height(ASSETS.FONT_MESSAGES)
-	start_y = (constants.GAME_HEIGHT-(constants.NUM_MESSAGES*text_height))-5
+	text_height = helper_text_height(constants.FONT_MESSAGES)
+	start_y = (constants.GAME_HEIGHT-(constants.NUM_MESSAGES*text_height))
 
 	i = 0
 
-	for message, color in to_draw:
-		draw_text(SURFACE_MAIN, message, (0, start_y+(i*text_height)), color, constants.COLOR_BLACK)
+	for i, (message, color) in enumerate(to_draw):
+		draw_text(SURFACE_MAIN, message, (0, start_y+(i*text_height)), color, constants.COLOR_BLACK, constants.FONT_MESSAGES)
 		i += 1
 
-def draw_text(display_surface, text, text_location, text_color, back_color = None):
+def draw_text(display_surface, text, text_location, text_color, back_color = None, font = constants.FONT_DEBUG):
 	#This function takes in some text and displays it on the referenced surface
-	text_surface, text_rect = helper_text_objects(text, text_color, back_color)
+	text_surface, text_rect = helper_text_objects(text, text_color, back_color, font)
 	text_rect.topleft = text_location
 	display_surface.blit(text_surface, text_rect)
 
+def draw_inspect_rect(coords):
+	new_surface = pygame.Surface((constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
+	new_surface.fill(constants.COLOR_RED)
+	new_surface.set_alpha(150)
+
+	SURFACE_MAIN.blit(new_surface, coords)
+
 #Helpers
 
-def helper_text_objects(incoming_text, incoming_color, incoming_BG):
+def helper_text_objects(incoming_text, incoming_color, incoming_BG, font):
 	if incoming_BG:
-		text_surface = ASSETS.FONT_DEBUG.render(incoming_text, False, incoming_color, incoming_BG)
+		text_surface = font.render(incoming_text, False, incoming_color, incoming_BG)
 	else: 
-		text_surface = ASSETS.FONT_DEBUG.render(incoming_text, False, incoming_color)
+		text_surface = font.render(incoming_text, False, incoming_color)
 	return text_surface, text_surface.get_rect()
 
 def helper_text_height(font):
 	font_object = font.render("a", False, (0,0,0))
 	font_rect = font_object.get_rect()
 	return font_rect.height
+
+def helper_text_width(font):
+	font_object = font.render("a", False, (0,0,0))
+	font_rect = font_object.get_rect()
+	return font_rect.width
+
+#menus
+def menu_pause():
+	#This menu pauses the game and displays a simple message
+	menu_Open = True
+	
+	menu_text = "PAUSED"
+	menu_font = constants.FONT_DEBUG
+
+	text_height = helper_text_height(menu_font)
+	text_width = len(menu_text)*helper_text_width(menu_font)
+
+	while menu_Open:
+		pause_events = pygame.event.get()
+		for event in pause_events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
+					menu_Open = False
+		draw_text(SURFACE_MAIN, menu_text, ((constants.GAME_WIDTH/2)-text_width/2, (constants.GAME_HEIGHT/2)-text_height/2), constants.COLOR_WHITE, constants.COLOR_BLACK)
+		
+		CLOCK.tick(constants.FPS_LIMIT)
+
+def menu_inventory():
+	inv_Open = True
+
+	menu_width = 216
+	menu_height = 216
+	menu_x = (constants.GAME_WIDTH/2) - menu_width/2
+	menu_y = (constants.GAME_HEIGHT/2) - menu_height/2
+
+
+
+	menu_font = constants.FONT_MESSAGES
+	menu_text_height = helper_text_height(menu_font)
+	
+	local_inventory_surface = pygame.Surface((menu_width, menu_height))
+	selected_line = None
+	while inv_Open:
+		#clear the menu
+		local_inventory_surface.fill(constants.COLOR_BLACK)
+		#register changes
+		print_list = [obj.object_name for obj in PLAYER.container.inventory]
+		
+		inventory_events = pygame.event.get()
+		mouse_x, mouse_y = pygame.mouse.get_pos()
+		rel_mouse_x = mouse_x - menu_x
+		rel_mouse_y = mouse_y - menu_y
+		
+		mouse_in_window = menu_width > rel_mouse_x > 0  and menu_height > rel_mouse_y > 0
+
+		if (pygame.mouse.get_rel() != (0, 0)) and mouse_in_window:
+			selected_line = int(rel_mouse_y/menu_text_height)
+
+		for event in inventory_events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_g or event.key == pygame.K_ESCAPE:
+					inv_Open = False
+				if event.key == pygame.K_s:
+					if selected_line == None or selected_line == (len(print_list)-1):
+						selected_line = 0
+					else:
+						selected_line += 1
+				if event.key == pygame.K_w:
+					if selected_line == None or selected_line == 0:
+						selected_line = len(print_list)-1
+					else:
+						selected_line -= 1
+				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
+					PLAYER.container.inventory[selected_line].item.use()
+				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
+						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
+			if event.type == pygame.MOUSEBUTTONDOWN:
+				if event.button == 1:
+					if mouse_in_window and selected_line <= (len(print_list)-1):
+						PLAYER.container.inventory[selected_line].item.use()
+		
+		
+		#draw menu
+		for line, (name) in enumerate(print_list):
+			if line == selected_line:
+				draw_text(local_inventory_surface, name, (0, 0+(line*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_GREY, menu_font)
+			else:
+				draw_text(local_inventory_surface, name, (0, 0+(line*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_BLACK, menu_font)
+			line += 1
+	
+		#display menu
+		draw_game()
+		SURFACE_MAIN.blit(local_inventory_surface, ((menu_x), (menu_y)))
+		CLOCK.tick(constants.FPS_LIMIT)
+		pygame.display.update()
+
+def menu_tile_select(coords_origin = None, max_range = None, radius = None, penetrate_walls = True, pierce_creature = True):
+	menu_Open = True
+	if coords_origin:
+		map_coords_x, map_coords_y = coords_origin
+	else:
+		map_coords_x, map_coords_y = (0, 0)
+	while menu_Open:
+		draw_game()
+		inspect_events = pygame.event.get()
+		if pygame.mouse.get_rel() != (0, 0):
+			mouse_x, mouse_y = pygame.mouse.get_pos()
+			map_coords_x = int(mouse_x/constants.CELL_WIDTH)
+			map_coords_y = int(mouse_y/constants.CELL_HEIGHT)
+
+		valid_tiles = []
+
+		if coords_origin:
+			full_list_of_tiles = map_find_line(coords_origin, (map_coords_x, map_coords_y))
+			for i, (x, y) in enumerate(full_list_of_tiles):
+				if max_range and i == max_range:
+					if i == max_range:
+						break
+				if not penetrate_walls and not map_wall_check(x, y):
+					break
+				if not pierce_creature and (map_creature_check(x, y)):
+				 	valid_tiles.append((x, y))
+				 	break
+				valid_tiles.append((x, y))
+		else:
+			valid_tiles =[(map_coords_x, map_coords_y)]
+
+		if radius:
+			area_effect = map_find_radius(valid_tiles[-1], radius)
+			for (tile_x, tile_y) in area_effect:
+				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT))
+
+		for (tile_x, tile_y) in valid_tiles:
+			draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT))
+		
+		CLOCK.tick(constants.FPS_LIMIT)
+		
+		pygame.display.flip()
+		
+		for event in inspect_events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_v or event.key == pygame.K_c:
+					return (valid_tiles[-1])
+					menu_Open = False
+				elif event.key == pygame.K_ESCAPE:
+					return None
+					menu_Open = False
+				elif event.key == pygame.K_w:
+					if map_coords_y > 0:
+						map_coords_y -= 1
+				elif event.key == pygame.K_a:
+					if map_coords_x > 0:
+						map_coords_x -= 1
+				elif event.key == pygame.K_s:
+					if map_coords_y < constants.MAP_HEIGHT:
+						map_coords_y += 1
+				elif event.key == pygame.K_d:
+					if map_coords_y < constants.MAP_WIDTH:
+						map_coords_x += 1
+			if event.type == pygame.MOUSEBUTTONDOWN:
+				if event.button == 1:
+					return (valid_tiles[-1])
+					menu_Open = False
+	
+#MAGIC
+def cast_heal(target, healing):
+	if target.creature:
+		if target.creature.hp == target.creature.maxhp:
+			return "cancelled"
+		else:
+			target.creature.heal(healing)
+			return "healed"
+		
+	else:
+		game_message("You can't heal an object.")
+		return "cancelled"
+
+def cast_lightning(caster, start_coords, max_range = 20, damage = 10):
+	point_selected = menu_tile_select(start_coords, max_range = max_range, penetrate_walls = False)
+	
+	if point_selected == None:
+		return "cancelled"
+
+	list_of_tiles = map_find_line(start_coords, point_selected)
+	for (x, y) in list_of_tiles:
+		target = map_creature_check(x, y)
+		if target and target is not caster:
+			target.creature.take_damage(damage)
+
+def cast_fireball(start_coords, max_range = 12 , radius = 3 , damage = 10):
+	local_radius = radius
+	point_selected = menu_tile_select(start_coords, max_range = max_range, radius = local_radius, penetrate_walls = False, pierce_creature = False)
+	
+	if point_selected == None:
+		return "cancelled"
+	tiles_to_damage = map_find_radius(point_selected, local_radius)
+	
+	creature_hit = False
+	for (x, y) in tiles_to_damage:
+		creature_to_damage = map_creature_check(x, y)
+		if creature_to_damage:
+			creature_hit = True
+			creature_to_damage.creature.take_damage(damage)
+	if creature_hit == False:
+		game_message("A magnificant ball of fire sails away from your hand, slamming into the ground and creating a near-blinding conflagration that engulfs the air far around the point of impact. It's astounding to look-at, though harms no-one.")
+	if creature_hit == True:
+		game_message("You hear howls of pain and the sizzling of flesh as all caught in the fireball's explosion burn.")
+
+def cast_confusion():
+	point_selected = menu_tile_select()
+	tile_x, tile_y = point_selected
+	target = map_creature_check(tile_x, tile_y)
+	if point_selected:
+		if target:
+			old_ai = target.ai
+			target.ai = com_AI_Confused(old_ai = old_ai, num_turns = 5)
+			target.ai.owner = target
+			game_message("The creature's eyes glaze over.", msg_color = constants.COLOR_GREEN)
+			return "confused"
+		else:
+			return "cancelled"
+	else:
+		return "cancelled"
+
 
 #GAME FUNCTIONS
 
@@ -369,21 +723,22 @@ def game_main_loop():
 	while not game_quit:
 		player_action = "no-action"
 		#handles player input
-		
+		map_calculate_fov()
 		player_action = handle_player_input()
 		if player_action == "QUIT":
 			game_quit = True
 		if player_action != "no-action":
 			for obj in GAME.current_objects:
 				if obj.ai:
-					obj.ai.take_Turn(obj.ai)
-		#calculates the FOV
-		map_calculate_fov()
+					obj.ai.take_Turn()
+			#calculates the FOV
+			map_calculate_fov()
 
 		CLOCK.tick(constants.FPS_LIMIT)
 		#draw the game
 
 		draw_game()
+		pygame.display.flip()
 
 	#TODO quit the game
 	pygame.quit()
@@ -391,9 +746,10 @@ def game_main_loop():
 
 def game_initialize():
 	"""This functions initiatlizes the main window in pygame"""
-	global SURFACE_MAIN, GAME, PLAYER, FOV_CALCULATE, CLOCK, ASSETS, BASE_ZOMBIE
+	global SURFACE_MAIN, GAME, PLAYER, FOV_CALCULATE, CLOCK, ASSETS
 
 	pygame.init()
+	pygame.key.set_repeat(555, 85)	
 
 	CLOCK = pygame.time.Clock()
 
@@ -405,52 +761,72 @@ def game_initialize():
 
 	ASSETS = struc_Assets()
 
-	container_com_test = com_Container
-	player_com = com_Creature("Arion")
-	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", creature = player_com, container = container_com_test())
+	container_com_test = com_Container()
+	player_com = com_Creature("Arion", damage = 5)
+	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", "Player", creature = player_com, container = container_com_test)
 
 	item_com_test = com_Item
-	zombie_AI_Test = com_AI_Test
+	zombie_AI_Test = com_AI_zombie
 	zombie_com = com_Creature("Zack", death_function = death_monster)
-	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "zombie", creature = zombie_com, ai = zombie_AI_Test, item = item_com_test)
+	zombie_com2 = com_Creature("Zelda", death_function = death_monster)
+	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
 
-	GAME.current_objects = [PLAYER, BASE_ZOMBIE]
+	SECOND_ZOMBIE = obj_Actor(10, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com2, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
+
+
+	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE]
 
 def handle_player_input():
 	global FOV_CALCULATE
 	#get player input
 	events_list = pygame.event.get()
-
 	#TODO process player input
 	for event in events_list:
 		if event.type == pygame.QUIT:
 			return "QUIT"
 		if event.type == pygame.KEYDOWN:
-			if event.key == pygame.K_UP:
+			if event.key == pygame.K_w:
 				PLAYER.creature.move(0, -1)
 				FOV_CALCULATE = True
 				return "player-moved"
-			if event.key == pygame.K_DOWN:
+			if event.key == pygame.K_s:
 				PLAYER.creature.move(0, 1)
 				FOV_CALCULATE = True
 				return "player-moved"
-			if event.key == pygame.K_LEFT:
+			if event.key == pygame.K_a:
 				PLAYER.creature.move(-1, 0)
 				FOV_CALCULATE = True
 				return "player-moved"
-			if event.key == pygame.K_RIGHT:
+			if event.key == pygame.K_d:
 				PLAYER.creature.move(1, 0)
 				FOV_CALCULATE = True
 				return "player-moved"
-			if event.key == pygame.K_g:
+			if event.key == pygame.K_e:
 				objects_at_player = map_objects_at_coords(PLAYER.x, PLAYER.y)
 				for obj in objects_at_player:
 					if obj.item:
-						obj.item.pick_up(self = obj.item, actor = PLAYER)
+						obj.item.pick_up(PLAYER)
+			if event.key == pygame.K_f:
+				if len(PLAYER.container.inventory) > 0:
+					PLAYER.container.inventory[-1].item.drop(PLAYER.x, PLAYER.y)
+			if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
+				menu_pause()
+			if event.key == pygame.K_g:
+				menu_inventory()
+			if event.key == pygame.K_v:
+				print(menu_tile_select())
+			if event.key == pygame.K_c:
+				cast_confusion()
+		if event.type == pygame.MOUSEBUTTONDOWN:
+			if event.button == 1:
+				mouse_x, mouse_y = pygame.mouse.get_pos()
+				PLAYER.move_towards(int(mouse_x/constants.CELL_WIDTH), int(mouse_y/constants.CELL_HEIGHT))
+				return "player-moved"
+
 			
 	return "no-action"
 
-def game_message(game_msg, msg_color):
+def game_message(game_msg, msg_color = constants.COLOR_WHITE):
 	GAME.message_history.append((game_msg, msg_color))
 
 
