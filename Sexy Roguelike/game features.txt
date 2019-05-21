@@ -20,7 +20,7 @@ Character
 			Stealth Based
 		Warlock
 			Access to more magic
-	TODO
+
 Enemies
 	Combat AI vs Idle AI
 Resource Management

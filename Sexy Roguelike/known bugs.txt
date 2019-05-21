@@ -1,4 +1,1 @@
-selecting to cast fireball on a wall next to the character crashes the game
-map doesn't calculate fov on click-move
-click move on player location crashes game
-can't quit game in menus
+None :)

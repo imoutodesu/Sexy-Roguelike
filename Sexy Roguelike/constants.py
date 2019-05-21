@@ -39,3 +39,4 @@ NUM_MESSAGES = 4
 #fonts
 FONT_DEBUG = pygame.font.Font("data/joystix.ttf", 16)
 FONT_MESSAGES = pygame.font.Font("data/joystix.ttf", 12)
+FONT_CURSOR_TEXT = pygame.font.Font("data/joystix.ttf", CELL_HEIGHT)

@@ -21,6 +21,7 @@ class struc_Assets:
 		self.player1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player1.png")
 		self.undead0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead0.png")
 		self.undead1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead1.png")
+		self.med_wep_sheet = obj_SpriteSheet("data/DawnLike/Items/MedWep.png")
 
 		#animations
 		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
@@ -29,12 +30,13 @@ class struc_Assets:
 		self.A_ZOMBIE += self.undead1_sheet.get_image(5, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 		#sprites
+		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
 		self.floor_sheet = obj_SpriteSheet("data/tiles/floor.png")
 		self.floor_sheet2 =obj_SpriteSheet("data/tiles/floorexplored.png")
 
 		self.S_FLOOR = self.floor_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_FLOOR_EXPLORED = self.floor_sheet2.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-
 
 		self.wall_sheet = obj_SpriteSheet("data/tiles/wall.png")
 		self.wall_sheet2 =obj_SpriteSheet("data/tiles/wallexplored.png")
@@ -55,7 +57,8 @@ class obj_Actor:
 				creature = None,
 				ai = None,
 				container = None,
-				item = None):
+				item = None,
+				equipment = None):
 		
 		self.x = x #map address not pixel address
 		self.y = y
@@ -85,6 +88,13 @@ class obj_Actor:
 		self.item = item
 		if item:
 			self.item.owner = self
+
+		self.equipment = equipment
+		if equipment:
+			self.equipment.owner = self
+			if not self.item:
+				self.item = com_Item()
+				self.item.owner = self
 	
 	#draws the actor
 	def draw(self):
@@ -112,8 +122,12 @@ class obj_Actor:
 		dx = x - self.x
 		dy = y - self.y
 		distance = math.sqrt((dx**2)+(dy**2))
-		dx = int(round(dx/distance))
-		dy = int(round(dy/distance))
+		if distance != 0:
+			dx = int(round(dx/distance))
+			dy = int(round(dy/distance))
+		else:
+			dx = 0
+			dy = 0
 		self.creature.move(dx, dy)
 
 
@@ -250,15 +264,43 @@ class com_Item:
 	
 	#use item
 	def use(self):
+		
+		if self.owner.equipment:
+			self.owner.equipment.toggle_equipped()
+			return
+
 		if self.use_function:
 			result = None
 			result = self.use_function(self.current_container.owner, self.use_func_helper)
 			if result == None:
 				print("Error: item " + str(self.owner) + " use_function failed to complete.")
+				return
 			elif result == "cancelled":
 				game_message("You can't use that right now.")
+				return
 			else:
 				self.current_container.inventory.remove(self.owner)
+				return
+
+class com_Equipment:
+	def __init__(self, atk_bonus = None, def_bonus = None, slot = None):
+		self.atk_bonus = atk_bonus
+		self.def_bonus = def_bonus
+		self.slot = slot
+		
+		self.equipped = False
+
+	def toggle_equipped(self):
+		if self.equipped:
+			self.unequip()
+		else:
+			self.equip()
+	def equip(self):
+		self.equipped = True
+		game_message("Item equipped")
+	def unequip(self):
+		self.equipped = False
+		game_message("Item unequiped")
 
 class com_Container:
 	def __init__(self, volume = 10.00, inventory = [], weight = 0.00):
@@ -288,6 +330,7 @@ class com_AI_Confused:
 		self.turn_counter += 1
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = self.old_ai
+			game_message("The creature has broken free of the enchantment!", msg_color = constants.COLOR_RED)
 
 class com_AI_zombie:
 	def __init__(self, old_ai = None, num_turns = 0):
@@ -462,18 +505,24 @@ def draw_messages():
 		draw_text(SURFACE_MAIN, message, (0, start_y+(i*text_height)), color, constants.COLOR_BLACK, constants.FONT_MESSAGES)
 		i += 1
 
-def draw_text(display_surface, text, text_location, text_color, back_color = None, font = constants.FONT_DEBUG):
+def draw_text(display_surface, text, text_location, text_color, back_color = None, font = constants.FONT_DEBUG, center = False):
 	#This function takes in some text and displays it on the referenced surface
 	text_surface, text_rect = helper_text_objects(text, text_color, back_color, font)
-	text_rect.topleft = text_location
+	if center:
+		text_rect.center = text_location
+	else:
+		text_rect.topleft = text_location
 	display_surface.blit(text_surface, text_rect)
 
-def draw_inspect_rect(coords):
+
+def draw_inspect_rect(coords, tile_color = constants.COLOR_RED, tile_alpha = 150, mark = None):
 	new_surface = pygame.Surface((constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
-	new_surface.fill(constants.COLOR_RED)
-	new_surface.set_alpha(150)
-
+	new_surface.fill(tile_color)
+	new_surface.set_alpha(tile_alpha)
+	if mark:
+		draw_text(new_surface, mark, (constants.CELL_WIDTH/2, constants.CELL_HEIGHT/2), constants.COLOR_BLACK, font = constants.FONT_CURSOR_TEXT, center = True)
+	
 	SURFACE_MAIN.blit(new_surface, coords)
 
 #Helpers
@@ -548,6 +597,9 @@ def menu_inventory():
 			selected_line = int(rel_mouse_y/menu_text_height)
 
 		for event in inventory_events:
+			if event.type == pygame.QUIT:
+				pygame.quit()
+				exit()
 			if event.type == pygame.KEYDOWN:
 				if event.key == pygame.K_g or event.key == pygame.K_ESCAPE:
 					inv_Open = False
@@ -617,18 +669,26 @@ def menu_tile_select(coords_origin = None, max_range = None, radius = None, pene
 			valid_tiles =[(map_coords_x, map_coords_y)]
 
 		if radius:
+			if not valid_tiles:
+				valid_tiles.append(coords_origin)
 			area_effect = map_find_radius(valid_tiles[-1], radius)
 			for (tile_x, tile_y) in area_effect:
 				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT))
 
 		for (tile_x, tile_y) in valid_tiles:
-			draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT))
+			if (tile_x, tile_y) == (map_coords_x, map_coords_y):
+				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT), tile_color = constants.COLOR_WHITE, mark = "X")
+			else:
+				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT), tile_color = constants.COLOR_WHITE)
 		
 		CLOCK.tick(constants.FPS_LIMIT)
 		
 		pygame.display.flip()
 		
 		for event in inspect_events:
+			if event.type == pygame.QUIT:
+				pygame.quit()
+				exit()
 			if event.type == pygame.KEYDOWN:
 				if event.key == pygame.K_v or event.key == pygame.K_c:
 					return (valid_tiles[-1])
@@ -719,12 +779,21 @@ def cast_confusion():
 def game_main_loop():
 	#In this function, we loop the main game
 	game_quit = False
-
+	wait_timer = 0.0
 	while not game_quit:
 		player_action = "no-action"
 		#handles player input
 		map_calculate_fov()
-		player_action = handle_player_input()
+		if not PLAYER.ai:
+			player_action = handle_player_input()
+		else:
+			if CLOCK.get_fps() > 0.0:
+				wait_timer += 1/CLOCK.get_fps()
+				if wait_timer >= 1:
+					wait_timer = 0.0
+					player_action = "controlled"
+			
+
 		if player_action == "QUIT":
 			game_quit = True
 		if player_action != "no-action":
@@ -736,7 +805,7 @@ def game_main_loop():
 
 		CLOCK.tick(constants.FPS_LIMIT)
 		#draw the game
-
+		map_calculate_fov()
 		draw_game()
 		pygame.display.flip()
 
@@ -767,6 +836,9 @@ def game_initialize():
 
 	item_com_test = com_Item
 	zombie_AI_Test = com_AI_zombie
+	equip_com_test = com_Equipment
+	SWORD_TEST = obj_Actor(1, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test())
+
 	zombie_com = com_Creature("Zack", death_function = death_monster)
 	zombie_com2 = com_Creature("Zelda", death_function = death_monster)
 	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
@@ -774,7 +846,7 @@ def game_initialize():
 	SECOND_ZOMBIE = obj_Actor(10, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com2, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
 
 
-	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE]
+	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE, SWORD_TEST]
 
 def handle_player_input():
 	global FOV_CALCULATE
@@ -783,6 +855,8 @@ def handle_player_input():
 	#TODO process player input
 	for event in events_list:
 		if event.type == pygame.QUIT:
+			pygame.quit()
+			exit()
 			return "QUIT"
 		if event.type == pygame.KEYDOWN:
 			if event.key == pygame.K_w:
@@ -815,12 +889,23 @@ def handle_player_input():
 				menu_inventory()
 			if event.key == pygame.K_v:
 				print(menu_tile_select())
+				return "player-looked"
 			if event.key == pygame.K_c:
 				cast_confusion()
+				return "player-casted"
+			if event.key == pygame.K_l:
+				cast_lightning(PLAYER, (PLAYER.x, PLAYER.y))
+				return "player-casted"
+			if event.key == pygame.K_o:
+				cast_fireball((PLAYER.x, PLAYER.y))
+				return "player-casted"
+			if event.key == pygame.K_SPACE:
+				return "player_passed"
 		if event.type == pygame.MOUSEBUTTONDOWN:
 			if event.button == 1:
 				mouse_x, mouse_y = pygame.mouse.get_pos()
 				PLAYER.move_towards(int(mouse_x/constants.CELL_WIDTH), int(mouse_y/constants.CELL_HEIGHT))
+				FOV_CALCULATE = True
 				return "player-moved"
 
 			
