@@ -20,6 +20,20 @@ Character
 			Stealth Based
 		Warlock
 			Access to more magic
+	Stats
+		Force
+			Strength (Melee Attack Damage)
+			Charisma (Spell Damage)
+		Flexibility
+			Dexterity (Melee Attack to-hit Chance)
+			Intelligence (Spell to-hit Chance, knowledge)
+		Endurance (HP)
+			Vitality (Resistance to Physical Attacks)
+			Willpower (Resistance to Mental Attacks)
+		Adaptability (Dodge Chance)
+			Reflexes (Extra Source of Dodge Chance)
+			Awareness (Spotting Traps and Enemies, gaining useful information from objects)
+		Spirit
 
 Enemies
 	Combat AI vs Idle AI

@@ -22,6 +22,7 @@ class struc_Assets:
 		self.undead0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead0.png")
 		self.undead1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead1.png")
 		self.med_wep_sheet = obj_SpriteSheet("data/DawnLike/Items/MedWep.png")
+		self.shield_sheet = obj_SpriteSheet("data/DawnLike/Items/Shield.png")
 
 		#animations
 		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
@@ -31,6 +32,7 @@ class struc_Assets:
 
 		#sprites
 		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_SHIELD = self.shield_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 		self.floor_sheet = obj_SpriteSheet("data/tiles/floor.png")
 		self.floor_sheet2 =obj_SpriteSheet("data/tiles/floorexplored.png")
@@ -96,6 +98,17 @@ class obj_Actor:
 				self.item = com_Item()
 				self.item.owner = self
 	
+	@property
+	def display_name(self):
+		if self.creature:
+			return self.creature.name_instance + " the " + self.object_name
+		
+		if self.item:
+			if self.equipment and self.equipment.equipped:
+				return self.object_name + " (equipped)"
+			else:
+				return self.object_name
+
 	#draws the actor
 	def draw(self):
 		is_visible = libtcod.map_is_in_fov(FOV_MAP, self.x, self.y)
@@ -194,11 +207,12 @@ class com_Creature:
 	creatures can die
 	creatures can move
 	"""
-	def __init__(self, name_instance, hp = 10, damage = 3, death_function = None):
+	def __init__(self, name_instance, hp = 10, base_atk = 1, base_def = 0, death_function = None):
 		self.name_instance = name_instance
 		self.maxhp = hp
 		self.hp = hp
-		self.damage = damage
+		self.base_atk = base_atk
+		self.base_def = base_def
 		self.death_function = death_function
 
 	def move(self, dx, dy):
@@ -206,14 +220,16 @@ class com_Creature:
 		TARGET = None
 		TARGET = map_creature_check(self.owner.x + dx, self.owner.y + dy, self.owner)
 		if TARGET:
-			self.attack(TARGET, self.damage)
+			self.attack(TARGET)
 		if tile_is_walkable and TARGET is None:
 			self.owner.x += dx
 			self.owner.y += dy
 
-	def attack(self, TARGET, damage):
+	def attack(self, TARGET):
+		
+		damage_dealt = self.power - TARGET.creature.defence
 		game_message(self.name_instance + " attacks " + TARGET.creature.name_instance, constants.COLOR_WHITE)
-		TARGET.creature.take_damage(self.damage)
+		TARGET.creature.take_damage(damage_dealt)
 
 	def take_damage(self, damage):
 		self.hp -= damage
@@ -234,6 +250,24 @@ class com_Creature:
 			else: 
 				self.hp += healing
 				game_message(self.name_instance + " is healed for " + str(healing))
+	@property
+	def power(self):
+		total_power = self.base_atk
+		if self.owner.container:
+			object_bonuses = [obj.equipment.atk_bonus for obj in self.owner.container.equipped_items]
+			for bonus in object_bonuses:
+				total_power += bonus
+		return total_power
+	@property
+	def defence(self):
+		total_defence = self.base_def
+		if self.owner.container:
+			object_bonuses = [obj.equipment.def_bonus for obj in self.owner.container.equipped_items]
+			for bonus in object_bonuses:
+				total_defence += bonus
+		return total_defence
+	
+	
 
 class com_Item:
 	def __init__(self, weight = 0.00, volume = 0.0, use_function = None, use_func_helper = None):
@@ -252,6 +286,8 @@ class com_Item:
 				actor.container.inventory.append(self.owner)
 				GAME.current_objects.remove(self.owner)
 				self.current_container = actor.container
+				if self.owner.equipment:
+					self.owner.equipment.current_container = actor.container
 					
 	#drop item
 	def drop(self, new_x, new_y):
@@ -260,6 +296,8 @@ class com_Item:
 		self.owner.x = new_x
 		self.owner.y = new_y
 		self.current_container = None
+		if self.owner.equipment:
+			self.equipment.current_container = actor.container
 		game_message("Item Dropped", constants.COLOR_WHITE)
 	
 	#use item
@@ -283,7 +321,7 @@ class com_Item:
 				return
 
 class com_Equipment:
-	def __init__(self, atk_bonus = None, def_bonus = None, slot = None):
+	def __init__(self, atk_bonus = 0, def_bonus = 0, slot = None):
 		self.atk_bonus = atk_bonus
 		self.def_bonus = def_bonus
 		self.slot = slot
@@ -296,11 +334,16 @@ class com_Equipment:
 		else:
 			self.equip()
 	def equip(self):
+		all_equiped_items = self.current_container.equipped_items
+		for item in all_equiped_items:
+			if item.equipment.slot == self.slot:
+				game_message("That slot is occupied!", constants.COLOR_RED)
+				return
 		self.equipped = True
 		game_message("Item equipped")
 	def unequip(self):
 		self.equipped = False
-		game_message("Item unequiped")
+		game_message("Item unequipped")
 
 class com_Container:
 	def __init__(self, volume = 10.00, inventory = [], weight = 0.00):
@@ -311,8 +354,17 @@ class com_Container:
 	# TODO Get names of everything in inventory
 	# TODO get volume within container
 	@property
-	def volume(self):
-		return 0.0
+	def volume(self):	
+		return 0.00
+		# self.contained_volume = 0.00
+		# for item in enumerate(self.inventory):
+		# 	if self.inventory[item].item:
+		# 		self.contained_volume += inventory[item].volume
+		# return self.contained_volume
+	@property
+	def equipped_items(self):
+		list_of_equipped_items = [obj for obj in self.inventory if obj.equipment and obj.equipment.equipped]
+		return list_of_equipped_items
 	
 	
 	# Todo get weight of everything in inventory
@@ -344,7 +396,7 @@ class com_AI_zombie:
 			if monster.distance_to(PLAYER.x, PLAYER.y) >= 2:
 				monster.move_towards(PLAYER.x, PLAYER.y)
 			elif PLAYER.creature.hp > 0:
-				monster.creature.attack(PLAYER, 3)
+				monster.creature.attack(PLAYER)
 		self.turn_counter += 1
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = old_ai
@@ -353,10 +405,17 @@ class com_AI_zombie:
 
 
 def death_monster(monster):
-	game_message(monster.creature.name_instance + " has died!", constants.COLOR_WHITE)
+	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
 	monster.creature = None
 	monster.ai = None
 	monster.animation = [monster.animation[0]]
+	monster.object_type = "Corpse"
+	monster.object_name += " Corpse"
+	monster.item = com_Item(use_function = cast_heal, use_func_helper = 6)
+	monster.item.owner = monster
+	if monster.container:
+		for item in monster.container:
+			monster.container.inventory[item].item.drop(monster.x, monster.y)
 
 
 
@@ -584,7 +643,7 @@ def menu_inventory():
 		#clear the menu
 		local_inventory_surface.fill(constants.COLOR_BLACK)
 		#register changes
-		print_list = [obj.object_name for obj in PLAYER.container.inventory]
+		print_list = [obj.display_name for obj in PLAYER.container.inventory]
 		
 		inventory_events = pygame.event.get()
 		mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -831,22 +890,25 @@ def game_initialize():
 	ASSETS = struc_Assets()
 
 	container_com_test = com_Container()
-	player_com = com_Creature("Arion", damage = 5)
+	player_com = com_Creature("Arion")
 	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", "Player", creature = player_com, container = container_com_test)
 
 	item_com_test = com_Item
 	zombie_AI_Test = com_AI_zombie
 	equip_com_test = com_Equipment
-	SWORD_TEST = obj_Actor(1, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test())
+	SWORD_TEST = obj_Actor(1, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test(atk_bonus = 3, slot = "main hand"))
+	SWORD_TEST2 = obj_Actor(2, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test(atk_bonus = 3, slot = "main hand"))
+	
+	SHIELD_TEST = obj_Actor(2, 1, ASSETS.S_SHIELD, "Armour", "Shield", equipment = equip_com_test(def_bonus = 1, slot = "off hand"))
 
 	zombie_com = com_Creature("Zack", death_function = death_monster)
 	zombie_com2 = com_Creature("Zelda", death_function = death_monster)
-	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
+	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com, ai = com_AI_zombie())
 
-	SECOND_ZOMBIE = obj_Actor(10, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com2, ai = com_AI_zombie(), item = item_com_test(use_function = cast_heal, use_func_helper = 6))
+	SECOND_ZOMBIE = obj_Actor(10, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com2, ai = com_AI_zombie())
 
 
-	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE, SWORD_TEST]
+	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE, SWORD_TEST, SHIELD_TEST, SWORD_TEST2]
 
 def handle_player_input():
 	global FOV_CALCULATE
