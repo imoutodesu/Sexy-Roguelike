@@ -22,18 +22,25 @@ Character
 			Access to more magic
 	Stats
 		Force
-			Strength (Melee Attack Damage)
+			Strength
 			Charisma (Spell Damage)
 		Flexibility
 			Dexterity (Melee Attack to-hit Chance)
 			Intelligence (Spell to-hit Chance, knowledge)
-		Endurance (HP)
-			Vitality (Resistance to Physical Attacks)
+		Endurance
+			Vitality
 			Willpower (Resistance to Mental Attacks)
-		Adaptability (Dodge Chance)
-			Reflexes (Extra Source of Dodge Chance)
+		Adaptability
+			Reflexes
 			Awareness (Spotting Traps and Enemies, gaining useful information from objects)
 		Spirit
+	Attributes
+		HP = END*5
+		Crit_Chance = (5*(self.Dex - TARGET.Ref))+self.spirit
+		Crit_Damage = damage*(self.spirit+item_multiplier)
+		Armour = (Vit-2)/2+item_defence
+		Physical_Damage = Str+item_power
+		Miss_Chance = (TARGET.Flex-self.Adap)*5
 
 Enemies
 	Combat AI vs Idle AI

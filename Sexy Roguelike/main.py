@@ -23,28 +23,33 @@ class struc_Assets:
 		self.undead1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Undead1.png")
 		self.med_wep_sheet = obj_SpriteSheet("data/DawnLike/Items/MedWep.png")
 		self.shield_sheet = obj_SpriteSheet("data/DawnLike/Items/Shield.png")
+		self.floor_sheet = obj_SpriteSheet("data/DawnLike/Objects/Floor.png")
+		self.wall_sheet = obj_SpriteSheet("data/DawnLike/Objects/Wall.png")
+		self.scroll_sheet = obj_SpriteSheet("data/DawnLike/Items/Scroll.png")
+		self.flesh_sheet = obj_SpriteSheet("data/DawnLike/Items/Flesh.png")
 
 		#animations
 		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.A_PLAYER += self.player1_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.A_ZOMBIE = self.undead0_sheet.get_image(5, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.A_ZOMBIE += self.undead1_sheet.get_image(5, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.A_ZOGRE = self.undead0_sheet.get_image(7, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.A_ZOGRE += self.undead1_sheet.get_image(7, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
 
 		#sprites
+		self.S_RIBS = self.flesh_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
+		self.S_FLOOR = self.floor_sheet.get_image(1, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_FLOOR_EXPLORED = self.floor_sheet.get_image(1, 10, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
+
+		self.S_WALL = self.wall_sheet.get_image(3, 3, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_WALL_EXPLORED = self.wall_sheet.get_image(3, 6, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
 		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_SHIELD = self.shield_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-
-		self.floor_sheet = obj_SpriteSheet("data/tiles/floor.png")
-		self.floor_sheet2 =obj_SpriteSheet("data/tiles/floorexplored.png")
-
-		self.S_FLOOR = self.floor_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-		self.S_FLOOR_EXPLORED = self.floor_sheet2.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-
-		self.wall_sheet = obj_SpriteSheet("data/tiles/wall.png")
-		self.wall_sheet2 =obj_SpriteSheet("data/tiles/wallexplored.png")
-
-		self.S_WALL = self.wall_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-		self.S_WALL_EXPLORED = self.wall_sheet2.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_SCROLL = self.scroll_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 
 
@@ -143,7 +148,6 @@ class obj_Actor:
 			dy = 0
 		self.creature.move(dx, dy)
 
-
 class obj_Game:
 	def __init__(self):
 		self.current_map = map_create()
@@ -228,6 +232,8 @@ class com_Creature:
 	def attack(self, TARGET):
 		
 		damage_dealt = self.power - TARGET.creature.defence
+		if damage_dealt < 0:
+			damage_dealt = 0
 		game_message(self.name_instance + " attacks " + TARGET.creature.name_instance, constants.COLOR_WHITE)
 		TARGET.creature.take_damage(damage_dealt)
 
@@ -266,8 +272,6 @@ class com_Creature:
 			for bonus in object_bonuses:
 				total_defence += bonus
 		return total_defence
-	
-	
 
 class com_Item:
 	def __init__(self, weight = 0.00, volume = 0.0, use_function = None, use_func_helper = None):
@@ -286,8 +290,6 @@ class com_Item:
 				actor.container.inventory.append(self.owner)
 				GAME.current_objects.remove(self.owner)
 				self.current_container = actor.container
-				if self.owner.equipment:
-					self.owner.equipment.current_container = actor.container
 					
 	#drop item
 	def drop(self, new_x, new_y):
@@ -296,8 +298,6 @@ class com_Item:
 		self.owner.x = new_x
 		self.owner.y = new_y
 		self.current_container = None
-		if self.owner.equipment:
-			self.equipment.current_container = actor.container
 		game_message("Item Dropped", constants.COLOR_WHITE)
 	
 	#use item
@@ -309,7 +309,13 @@ class com_Item:
 
 		if self.use_function:
 			result = None
-			result = self.use_function(self.current_container.owner, self.use_func_helper)
+			if not self.use_func_helper:
+				result = self.use_function(self.current_container.owner)
+			elif self.use_func_helper:
+				result = self.use_function(self.current_container.owner, self.use_func_helper)
+			else:
+				print("Error, item " + str(self.owner) + " use_func_helper missing.")
+				return
 			if result == None:
 				print("Error: item " + str(self.owner) + " use_function failed to complete.")
 				return
@@ -334,7 +340,7 @@ class com_Equipment:
 		else:
 			self.equip()
 	def equip(self):
-		all_equiped_items = self.current_container.equipped_items
+		all_equiped_items = self.owner.item.current_container.equipped_items
 		for item in all_equiped_items:
 			if item.equipment.slot == self.slot:
 				game_message("That slot is occupied!", constants.COLOR_RED)
@@ -373,12 +379,17 @@ class com_Container:
 
 #AI
 class com_AI_Confused:
-	def __init__(self, old_ai = None, num_turns = -1):
+	def __init__(self, old_ai = None, num_turns = 5):
 		self.old_ai = old_ai
 		self.num_turns = num_turns
 		self.turn_counter = 0
 	def take_Turn(self):
-		self.owner.creature.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
+		x = libtcod.random_get_int(None, -1, 1)
+		y = libtcod.random_get_int(None, -1, 1)
+		if x == 0 and y == 0:
+			self.owner.creature.attack(TARGET = self.owner)
+		else:
+			self.owner.creature.move(x, y)
 		self.turn_counter += 1
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = self.old_ai
@@ -401,14 +412,11 @@ class com_AI_zombie:
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = old_ai
 
-
-
-
 def death_monster(monster):
 	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
 	monster.creature = None
 	monster.ai = None
-	monster.animation = [monster.animation[0]]
+	monster.animation = ASSETS.S_RIBS
 	monster.object_type = "Corpse"
 	monster.object_name += " Corpse"
 	monster.item = com_Item(use_function = cast_heal, use_func_helper = 6)
@@ -420,7 +428,6 @@ def death_monster(monster):
 
 
 #MAP
-
 def map_create():
 	new_map = [[struc_Tile(True) for y in range(0, constants.MAP_HEIGHT)] for x in range (0, constants.MAP_WIDTH)]
 	for x in range(constants.MAP_WIDTH):
@@ -674,12 +681,14 @@ def menu_inventory():
 						selected_line -= 1
 				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
 					PLAYER.container.inventory[selected_line].item.use()
+					inv_Open = False
 				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
 						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
 					if mouse_in_window and selected_line <= (len(print_list)-1):
 						PLAYER.container.inventory[selected_line].item.use()
+						inv_Open = False
 		
 		
 		#draw menu
@@ -749,7 +758,7 @@ def menu_tile_select(coords_origin = None, max_range = None, radius = None, pene
 				pygame.quit()
 				exit()
 			if event.type == pygame.KEYDOWN:
-				if event.key == pygame.K_v or event.key == pygame.K_c:
+				if event.key == pygame.K_v or event.key == pygame.K_c or event.key == pygame.K_e:
 					return (valid_tiles[-1])
 					menu_Open = False
 				elif event.key == pygame.K_ESCAPE:
@@ -773,7 +782,7 @@ def menu_tile_select(coords_origin = None, max_range = None, radius = None, pene
 					menu_Open = False
 	
 #MAGIC
-def cast_heal(target, healing):
+def cast_heal(target, healing = 6):
 	if target.creature:
 		if target.creature.hp == target.creature.maxhp:
 			return "cancelled"
@@ -785,7 +794,10 @@ def cast_heal(target, healing):
 		game_message("You can't heal an object.")
 		return "cancelled"
 
-def cast_lightning(caster, start_coords, max_range = 20, damage = 10):
+def cast_lightning(caster, T_Range_Damage = (20, 10)):
+	max_range, damage = T_Range_Damage
+
+	start_coords = (caster.x, caster.y)
 	point_selected = menu_tile_select(start_coords, max_range = max_range, penetrate_walls = False)
 	
 	if point_selected == None:
@@ -796,10 +808,11 @@ def cast_lightning(caster, start_coords, max_range = 20, damage = 10):
 		target = map_creature_check(x, y)
 		if target and target is not caster:
 			target.creature.take_damage(damage)
+	return "cast"
 
-def cast_fireball(start_coords, max_range = 12 , radius = 3 , damage = 10):
-	local_radius = radius
-	point_selected = menu_tile_select(start_coords, max_range = max_range, radius = local_radius, penetrate_walls = False, pierce_creature = False)
+def cast_fireball(caster, T_range_radius_damage = (12, 3, 10)):
+	max_range, local_radius, damage = T_range_radius_damage
+	point_selected = menu_tile_select((caster.x, caster.y), max_range = max_range, radius = local_radius, penetrate_walls = False, pierce_creature = False)
 	
 	if point_selected == None:
 		return "cancelled"
@@ -815,15 +828,16 @@ def cast_fireball(start_coords, max_range = 12 , radius = 3 , damage = 10):
 		game_message("A magnificant ball of fire sails away from your hand, slamming into the ground and creating a near-blinding conflagration that engulfs the air far around the point of impact. It's astounding to look-at, though harms no-one.")
 	if creature_hit == True:
 		game_message("You hear howls of pain and the sizzling of flesh as all caught in the fireball's explosion burn.")
+	return "cast"
 
-def cast_confusion():
+def cast_confusion(caster, duration = 5):
 	point_selected = menu_tile_select()
 	tile_x, tile_y = point_selected
 	target = map_creature_check(tile_x, tile_y)
 	if point_selected:
 		if target:
 			old_ai = target.ai
-			target.ai = com_AI_Confused(old_ai = old_ai, num_turns = 5)
+			target.ai = com_AI_Confused(old_ai = old_ai, num_turns = duration)
 			target.ai.owner = target
 			game_message("The creature's eyes glaze over.", msg_color = constants.COLOR_GREEN)
 			return "confused"
@@ -832,11 +846,105 @@ def cast_confusion():
 	else:
 		return "cancelled"
 
+#GENERATORS
+
+#items
+def gen_item(coords, forced_range = (1, 5)):
+	global GAME
+	r_min, r_max = forced_range
+	generated_item = libtcod.random_get_int(None, r_min, r_max)
+	new_item = None
+	if generated_item == 1:
+		new_item = gen_lightning_scroll(coords)
+		print("Lightning")
+	elif generated_item == 2:
+		new_item = gen_fireball_scroll(coords)
+		print("Fire")
+	elif generated_item == 3:
+		new_item = gen_confusion_scroll(coords)
+		print("Confuse")
+	elif generated_item == 4:
+		new_item = gen_weapon_sword(coords)
+		print("Sword")
+	elif generated_item == 5:
+		new_item = gen_armour_shield(coords)
+		print("Shield")
+	return new_item
+	
+
+def gen_lightning_scroll(coords):
+	x, y = coords
+	max_range = libtcod.random_get_int(None, 6, 20)
+	damage = libtcod.random_get_int(None, 5, 10)
+	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Lightning Scroll", item = com_Item(use_function = cast_lightning, use_func_helper = (max_range, damage)))	
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+def gen_fireball_scroll(coords):
+	x, y = coords
+	max_range = libtcod.random_get_int(None, 6, 20)
+	damage = libtcod.random_get_int(None, 5, 10)
+	radius = libtcod.random_get_int(None, 1, 5)
+	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Fireball Scroll", item = com_Item(use_function = cast_fireball, use_func_helper = (max_range, radius, damage)))	
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+def gen_confusion_scroll(coords):
+	x, y = coords
+	duration = libtcod.random_get_int(None, 1, 6)
+	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Confusion Scroll", item = com_Item(use_function = cast_confusion, use_func_helper = duration))	
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+def gen_weapon_sword(coords):
+	x, y = coords
+	bonus = libtcod.random_get_int(None, 1, 4)
+	returned_object = obj_Actor(x, y, ASSETS.S_SWORD, "Weapon", "+" + str(bonus) + " Sword", equipment = com_Equipment(atk_bonus = bonus, slot = "main_hand"))
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+def gen_armour_shield(coords):
+	x, y = coords
+	bonus = libtcod.random_get_int(None, 1, 4)
+	returned_object = obj_Actor(x, y, ASSETS.S_SHIELD, "Armour", "+" + str(bonus) + " Shield", equipment = com_Equipment(def_bonus = bonus, slot = "off_hand"))
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+#enemies
+def gen_player(coords):
+	player = obj_Actor(1, 1, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
+	return player
+
+def gen_undead(coords, forced_range = (1, 100)):
+	global GAME
+	r_min, r_max = forced_range
+	random_enemy = libtcod.random_get_int(None, r_min, r_max)
+	if random_enemy <= 90:
+		gen_zombie(coords)
+	else:
+		gen_zogre(coords)
+
+
+def gen_zombie(coords):
+	x, y = coords
+	creature_name = libtcod.namegen_generate("Fantasy female")
+	returned_object = obj_Actor(x, y, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
+def gen_zogre(coords):
+	x, y = coords
+	creature_name = libtcod.namegen_generate("Celtic male")
+	returned_object = obj_Actor(x, y, ASSETS.A_ZOGRE, "Undead", "Zogre", creature = com_Creature(creature_name, hp = 15, base_atk = 5, base_def = 1, death_function = death_monster), ai = com_AI_zombie())
+	GAME.current_objects.append(returned_object)
+	return returned_object
+
 
 #GAME FUNCTIONS
 
 def game_main_loop():
 	#In this function, we loop the main game
+	global FOV_CALCULATE
 	game_quit = False
 	wait_timer = 0.0
 	while not game_quit:
@@ -851,6 +959,7 @@ def game_main_loop():
 				if wait_timer >= 1:
 					wait_timer = 0.0
 					player_action = "controlled"
+					FOV_CALCULATE = True
 			
 
 		if player_action == "QUIT":
@@ -889,26 +998,34 @@ def game_initialize():
 
 	ASSETS = struc_Assets()
 
-	container_com_test = com_Container()
-	player_com = com_Creature("Arion")
-	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Player", "Player", creature = player_com, container = container_com_test)
+	libtcod.namegen_parse("data\\namegen\\jice_celtic.cfg")
+	libtcod.namegen_parse("data\\namegen\\jice_fantasy.cfg")
+	libtcod.namegen_parse("data\\namegen\\jice_mesopotamian.cfg")
+	libtcod.namegen_parse("data\\namegen\\jice_norse.cfg")
+	libtcod.namegen_parse("data\\namegen\\jice_region.cfg")
+	libtcod.namegen_parse("data\\namegen\\jice_town.cfg")
+	libtcod.namegen_parse("data\\namegen\\mignos_demon.cfg")
+	libtcod.namegen_parse("data\\namegen\\mignos_dwarf.cfg")
+	libtcod.namegen_parse("data\\namegen\\mignos_norse.cfg")
+	libtcod.namegen_parse("data\\namegen\\mignos_standard.cfg")
+	libtcod.namegen_parse("data\\namegen\\mignos_town.cfg")
 
-	item_com_test = com_Item
-	zombie_AI_Test = com_AI_zombie
-	equip_com_test = com_Equipment
-	SWORD_TEST = obj_Actor(1, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test(atk_bonus = 3, slot = "main hand"))
-	SWORD_TEST2 = obj_Actor(2, 2, ASSETS.S_SWORD, "Weapon", "Sword", equipment = equip_com_test(atk_bonus = 3, slot = "main hand"))
+	PLAYER = gen_player((1, 1))
+
+
+	GAME.current_objects.append(PLAYER)
 	
-	SHIELD_TEST = obj_Actor(2, 1, ASSETS.S_SHIELD, "Armour", "Shield", equipment = equip_com_test(def_bonus = 1, slot = "off hand"))
-
-	zombie_com = com_Creature("Zack", death_function = death_monster)
-	zombie_com2 = com_Creature("Zelda", death_function = death_monster)
-	BASE_ZOMBIE = obj_Actor(15, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com, ai = com_AI_zombie())
-
-	SECOND_ZOMBIE = obj_Actor(10, 15, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = zombie_com2, ai = com_AI_zombie())
+	gen_undead((15, 15))
+	gen_undead((10, 15))
+	gen_undead((10, 10))
 
 
-	GAME.current_objects = [PLAYER, BASE_ZOMBIE, SECOND_ZOMBIE, SWORD_TEST, SHIELD_TEST, SWORD_TEST2]
+
+	gen_item((1, 2))
+	gen_item((2, 1))
+	gen_item((2, 2))
+	gen_item((3, 1))
+	gen_item((3, 2))
 
 def handle_player_input():
 	global FOV_CALCULATE
@@ -952,15 +1069,6 @@ def handle_player_input():
 			if event.key == pygame.K_v:
 				print(menu_tile_select())
 				return "player-looked"
-			if event.key == pygame.K_c:
-				cast_confusion()
-				return "player-casted"
-			if event.key == pygame.K_l:
-				cast_lightning(PLAYER, (PLAYER.x, PLAYER.y))
-				return "player-casted"
-			if event.key == pygame.K_o:
-				cast_fireball((PLAYER.x, PLAYER.y))
-				return "player-casted"
 			if event.key == pygame.K_SPACE:
 				return "player_passed"
 		if event.type == pygame.MOUSEBUTTONDOWN:
