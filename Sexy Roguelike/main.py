@@ -478,7 +478,6 @@ def map_create():
 		x = libtcod.random_get_int(0, 2, constants.MAP_WIDTH - w - 2)
 		y = libtcod.random_get_int(0, 2, constants.MAP_HEIGHT - h - 2)
 		new_room = obj_Room((x, y), (w, h))
-		print(str(new_room.x1)+","+str(new_room.y1)+"/"+str(new_room.x2)+","+str(new_room.y2))
 		#checks interference
 		failed = False
 		for other_room in list_of_rooms:
@@ -497,16 +496,30 @@ def map_create():
 				map_create_tunnels(current_center, previous_center, new_map)
 			list_of_rooms.append(new_room)
 	map_make_fov(new_map)
-	return new_map
+	return (new_map, list_of_rooms)
+
+def map_place_objects(room_list):
+	for room in room_list:
+		num_of_objects = libtcod.random_get_int(0, 0, 4)
+		if num_of_objects > 0:
+			for obj in range(num_of_objects):
+				obj_x = libtcod.random_get_int(0, room.x1+1, room.x2-1)
+				obj_y = libtcod.random_get_int(0, room.y1+1, room.y2-1)
+				item_or_enemy = libtcod.random_get_int(0,0,1)
+				if item_or_enemy == 0:
+					gen_item((obj_x, obj_y))
+				else:
+					if not map_creature_check(obj_x, obj_y):
+						gen_undead((obj_x, obj_y))
+					else:
+						gen_item((obj_x, obj_y))
+
 
 def map_place_room(new_map, placed_room):
 	# set all tiles within a rectangle to 0
 	for x in range(placed_room.x1, placed_room.x2):
-		print(x)
 		for y in range(placed_room.y1, placed_room.y2):
-			print(y)
 			new_map[x][y].walkable = True
-
 
 def map_create_tunnels(room1_center, room2_center, used_map):
 	x1, y1 = room1_center
@@ -522,8 +535,7 @@ def map_create_tunnels(room1_center, room2_center, used_map):
 			used_map[x1][y].walkable = True
 		for x in range(min(x1, x2), max(x1, x2)):
 			used_map[x][y2].walkable = True
-	
-	
+		
 def map_creature_check(x, y, excluded_object = None):
 	TARGET = None
 	for object in GAME.current_objects:
@@ -1093,7 +1105,8 @@ def game_initialize():
 
 	ASSETS = struc_Assets()
 	GAME = obj_Game()
-	GAME.current_map = map_create()
+	GAME.current_map, GAME.current_rooms = map_create()
+	map_place_objects(GAME.current_rooms)
 
 
 def handle_player_input():
