@@ -220,7 +220,6 @@ class obj_Room:
 	'''
 
 	def __init__(self, coords, size):
-
 		self.x1, self.y1 = coords
 		self.w, self.h = size
 
@@ -477,8 +476,9 @@ def map_create():
 		w = libtcod.random_get_int(0, 2, 10)
 		h = libtcod.random_get_int(0, 2, 10)
 		x = libtcod.random_get_int(0, 2, constants.MAP_WIDTH - w - 2)
-		y = libtcod.random_get_int(0, 2, constants.MAP_WIDTH - h - 2)
+		y = libtcod.random_get_int(0, 2, constants.MAP_HEIGHT - h - 2)
 		new_room = obj_Room((x, y), (w, h))
+		print(str(new_room.x1)+","+str(new_room.y1)+"/"+str(new_room.x2)+","+str(new_room.y2))
 		#checks interference
 		failed = False
 		for other_room in list_of_rooms:
@@ -499,11 +499,14 @@ def map_create():
 	map_make_fov(new_map)
 	return new_map
 
-def map_place_room(new_map, room):
+def map_place_room(new_map, placed_room):
 	# set all tiles within a rectangle to 0
-	for x in range(room.x1, room.x2):
-		for y in range(room.y1, room.y2):
+	for x in range(placed_room.x1, placed_room.x2):
+		print(x)
+		for y in range(placed_room.y1, placed_room.y2):
+			print(y)
 			new_map[x][y].walkable = True
+
 
 def map_create_tunnels(room1_center, room2_center, used_map):
 	x1, y1 = room1_center
@@ -992,7 +995,8 @@ def gen_armour_shield(coords):
 #enemies
 def gen_player(coords):
 	global PLAYER, GAME
-	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
+	x, y = coords
+	PLAYER = obj_Actor(x, y, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
 	GAME.current_objects.append(PLAYER)
 	return PLAYER
 
