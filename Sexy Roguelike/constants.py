@@ -5,8 +5,8 @@ import libtcodpy as libtcod
 pygame.init()
 
 #MAP VARS
-MAP_WIDTH = 20
-MAP_HEIGHT = 20
+MAP_WIDTH = 50
+MAP_HEIGHT = 30
 
 #game sizes
 CELL_WIDTH = 32

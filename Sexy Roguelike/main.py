@@ -2,10 +2,18 @@
 import libtcodpy as libtcod
 import pygame
 import textwrap
+import pickle
+import gzip
 import math
+import random
+import sys
+import datetime
+import os
+
 
 #game files
 import constants
+import dungeonGenerationAlgorithms as dGA
 
 #STRUCTURES
 
@@ -105,6 +113,9 @@ class obj_Actor:
 	
 	@property
 	def display_name(self):
+		"""
+		determines the display name of a creature
+		"""
 		if self.creature:
 			return self.creature.name_instance + " the " + self.object_name
 		
@@ -132,6 +143,9 @@ class obj_Actor:
 				SURFACE_MAIN.blit(self.animation[self.sprite_image], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
 
 	def distance_to(self, x, y):
+		"""
+		determines the distance between an the actor and a point on the map
+		"""
 		dx = x - self.x
 		dy = y - self.y
 		return math.sqrt((dx**2)+(dy**2))
@@ -150,7 +164,6 @@ class obj_Actor:
 
 class obj_Game:
 	def __init__(self):
-		self.current_map = map_create()
 		self.current_objects = []
 		self.message_history = []
 
@@ -201,6 +214,33 @@ class obj_SpriteSheet:
 
 		return image_list
 
+class obj_Room:
+	''' 
+	This is a rectangle that lives on the map
+	'''
+
+	def __init__(self, coords, size):
+
+		self.x1, self.y1 = coords
+		self.w, self.h = size
+
+		self.x2 = self.x1 + self.w
+		self.y2 = self.y1 + self.h
+
+	@property
+	def center(self):
+		center_x = (self.x1 + self.x2) // 2
+		center_y = (self.y1 + self.y2) // 2
+
+		return (center_x, center_y)
+
+	def intersects(self, other):
+
+		# return True if other obj intersects with this one
+		objects_intersect = (self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1)
+
+		return objects_intersect
+	
 
 
 #COMPONENTS
@@ -340,8 +380,8 @@ class com_Equipment:
 		else:
 			self.equip()
 	def equip(self):
-		all_equiped_items = self.owner.item.current_container.equipped_items
-		for item in all_equiped_items:
+		all_equipped_items = self.owner.item.current_container.equipped_items
+		for item in all_equipped_items:
 			if item.equipment.slot == self.slot:
 				game_message("That slot is occupied!", constants.COLOR_RED)
 				return
@@ -360,13 +400,13 @@ class com_Container:
 	# TODO Get names of everything in inventory
 	# TODO get volume within container
 	@property
-	def volume(self):	
-		return 0.00
-		# self.contained_volume = 0.00
-		# for item in enumerate(self.inventory):
-		# 	if self.inventory[item].item:
-		# 		self.contained_volume += inventory[item].volume
-		# return self.contained_volume
+	def volume(self):
+		total_volume = 0
+		if self.inventory:
+			object_volumes = [obj.item.volume for obj in self.inventory]
+			for volume in object_volumes:
+				total_volume += volume
+		return total_volume
 	@property
 	def equipped_items(self):
 		list_of_equipped_items = [obj for obj in self.inventory if obj.equipment and obj.equipment.equipped]
@@ -384,8 +424,8 @@ class com_AI_Confused:
 		self.num_turns = num_turns
 		self.turn_counter = 0
 	def take_Turn(self):
-		x = libtcod.random_get_int(None, -1, 1)
-		y = libtcod.random_get_int(None, -1, 1)
+		x = libtcod.random_get_int(0, -1, 1)
+		y = libtcod.random_get_int(0, -1, 1)
 		if x == 0 and y == 0:
 			self.owner.creature.attack(TARGET = self.owner)
 		else:
@@ -429,18 +469,58 @@ def death_monster(monster):
 
 #MAP
 def map_create():
-	new_map = [[struc_Tile(True) for y in range(0, constants.MAP_HEIGHT)] for x in range (0, constants.MAP_WIDTH)]
-	for x in range(constants.MAP_WIDTH):
-		new_map[x][0].walkable = False
-		new_map[x][constants.MAP_HEIGHT-1].walkable = False
-	for y in range(constants.MAP_WIDTH):
-		new_map[0][y].walkable = False
-		new_map[constants.MAP_WIDTH-1][y].walkable = False
-
+	#generates a blank map
+	new_map = [[struc_Tile(False) for y in range(0, constants.MAP_HEIGHT)] for x in range (0, constants.MAP_WIDTH)]
+	#generate new room
+	list_of_rooms = []
+	for i in range(0, 10):
+		w = libtcod.random_get_int(0, 2, 10)
+		h = libtcod.random_get_int(0, 2, 10)
+		x = libtcod.random_get_int(0, 2, constants.MAP_WIDTH - w - 2)
+		y = libtcod.random_get_int(0, 2, constants.MAP_WIDTH - h - 2)
+		new_room = obj_Room((x, y), (w, h))
+		#checks interference
+		failed = False
+		for other_room in list_of_rooms:
+			if new_room.intersects(other_room):
+				failed = True
+				break
+		#if not, create new room
+		if not failed:
+			map_place_room(new_map, new_room)
+			current_center = new_room.center
+			if len(list_of_rooms) == 0:
+				gen_player(current_center)
+			else:
+				previous_center = list_of_rooms[-1].center
+				#dig tunnels
+				map_create_tunnels(current_center, previous_center, new_map)
+			list_of_rooms.append(new_room)
 	map_make_fov(new_map)
-
 	return new_map
 
+def map_place_room(new_map, room):
+	# set all tiles within a rectangle to 0
+	for x in range(room.x1, room.x2):
+		for y in range(room.y1, room.y2):
+			new_map[x][y].walkable = True
+
+def map_create_tunnels(room1_center, room2_center, used_map):
+	x1, y1 = room1_center
+	x2, y2 = room2_center
+	coin_flip = (libtcod.random_get_int(0, 0, 1) == 1)
+	if coin_flip:
+		for x in range(min(x1, x2), max(x1, x2)):
+			used_map[x][y1].walkable = True
+		for y in range(min(y1, y2), max(y1, y2)):
+			used_map[x2][y].walkable = True
+	else:
+		for y in range(min(y1, y2), max(y1, y2)):
+			used_map[x1][y].walkable = True
+		for x in range(min(x1, x2), max(x1, x2)):
+			used_map[x][y2].walkable = True
+	
+	
 def map_creature_check(x, y, excluded_object = None):
 	TARGET = None
 	for object in GAME.current_objects:
@@ -832,17 +912,16 @@ def cast_fireball(caster, T_range_radius_damage = (12, 3, 10)):
 
 def cast_confusion(caster, duration = 5):
 	point_selected = menu_tile_select()
+	if point_selected == None:
+		return "cancelled"
 	tile_x, tile_y = point_selected
 	target = map_creature_check(tile_x, tile_y)
-	if point_selected:
-		if target:
-			old_ai = target.ai
-			target.ai = com_AI_Confused(old_ai = old_ai, num_turns = duration)
-			target.ai.owner = target
-			game_message("The creature's eyes glaze over.", msg_color = constants.COLOR_GREEN)
-			return "confused"
-		else:
-			return "cancelled"
+	if target:
+		old_ai = target.ai
+		target.ai = com_AI_Confused(old_ai = old_ai, num_turns = duration)
+		target.ai.owner = target
+		game_message("The creature's eyes glaze over.", msg_color = constants.COLOR_GREEN)
+		return "confused"
 	else:
 		return "cancelled"
 
@@ -852,7 +931,7 @@ def cast_confusion(caster, duration = 5):
 def gen_item(coords, forced_range = (1, 5)):
 	global GAME
 	r_min, r_max = forced_range
-	generated_item = libtcod.random_get_int(None, r_min, r_max)
+	generated_item = libtcod.random_get_int(0, r_min, r_max)
 	new_item = None
 	if generated_item == 1:
 		new_item = gen_lightning_scroll(coords)
@@ -874,51 +953,53 @@ def gen_item(coords, forced_range = (1, 5)):
 
 def gen_lightning_scroll(coords):
 	x, y = coords
-	max_range = libtcod.random_get_int(None, 6, 20)
-	damage = libtcod.random_get_int(None, 5, 10)
+	max_range = libtcod.random_get_int(0, 6, 20)
+	damage = libtcod.random_get_int(0, 5, 10)
 	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Lightning Scroll", item = com_Item(use_function = cast_lightning, use_func_helper = (max_range, damage)))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_fireball_scroll(coords):
 	x, y = coords
-	max_range = libtcod.random_get_int(None, 6, 20)
-	damage = libtcod.random_get_int(None, 5, 10)
-	radius = libtcod.random_get_int(None, 1, 5)
+	max_range = libtcod.random_get_int(0, 6, 20)
+	damage = libtcod.random_get_int(0, 5, 10)
+	radius = libtcod.random_get_int(0, 1, 5)
 	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Fireball Scroll", item = com_Item(use_function = cast_fireball, use_func_helper = (max_range, radius, damage)))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_confusion_scroll(coords):
 	x, y = coords
-	duration = libtcod.random_get_int(None, 1, 6)
+	duration = libtcod.random_get_int(0, 1, 6)
 	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Confusion Scroll", item = com_Item(use_function = cast_confusion, use_func_helper = duration))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_weapon_sword(coords):
 	x, y = coords
-	bonus = libtcod.random_get_int(None, 1, 4)
+	bonus = libtcod.random_get_int(0, 1, 4)
 	returned_object = obj_Actor(x, y, ASSETS.S_SWORD, "Weapon", "+" + str(bonus) + " Sword", equipment = com_Equipment(atk_bonus = bonus, slot = "main_hand"))
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_armour_shield(coords):
 	x, y = coords
-	bonus = libtcod.random_get_int(None, 1, 4)
+	bonus = libtcod.random_get_int(0, 1, 4)
 	returned_object = obj_Actor(x, y, ASSETS.S_SHIELD, "Armour", "+" + str(bonus) + " Shield", equipment = com_Equipment(def_bonus = bonus, slot = "off_hand"))
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 #enemies
 def gen_player(coords):
-	player = obj_Actor(1, 1, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
-	return player
+	global PLAYER, GAME
+	PLAYER = obj_Actor(1, 1, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
+	GAME.current_objects.append(PLAYER)
+	return PLAYER
 
 def gen_undead(coords, forced_range = (1, 100)):
 	global GAME
 	r_min, r_max = forced_range
-	random_enemy = libtcod.random_get_int(None, r_min, r_max)
+	random_enemy = libtcod.random_get_int(0, r_min, r_max)
 	if random_enemy <= 90:
 		gen_zombie(coords)
 	else:
@@ -988,44 +1069,28 @@ def game_initialize():
 	pygame.init()
 	pygame.key.set_repeat(555, 85)	
 
-	CLOCK = pygame.time.Clock()
-
-	SURFACE_MAIN = pygame.display.set_mode((constants.GAME_WIDTH, constants.GAME_HEIGHT))
-
-	FOV_CALCULATE = True
-
-	GAME = obj_Game()
-
-	ASSETS = struc_Assets()
-
 	libtcod.namegen_parse("data\\namegen\\jice_celtic.cfg")
 	libtcod.namegen_parse("data\\namegen\\jice_fantasy.cfg")
 	libtcod.namegen_parse("data\\namegen\\jice_mesopotamian.cfg")
 	libtcod.namegen_parse("data\\namegen\\jice_norse.cfg")
 	libtcod.namegen_parse("data\\namegen\\jice_region.cfg")
 	libtcod.namegen_parse("data\\namegen\\jice_town.cfg")
-	libtcod.namegen_parse("data\\namegen\\mignos_demon.cfg")
-	libtcod.namegen_parse("data\\namegen\\mignos_dwarf.cfg")
-	libtcod.namegen_parse("data\\namegen\\mignos_norse.cfg")
-	libtcod.namegen_parse("data\\namegen\\mignos_standard.cfg")
-	libtcod.namegen_parse("data\\namegen\\mignos_town.cfg")
+	libtcod.namegen_parse("data\\namegen\\mingos_demon.cfg")
+	libtcod.namegen_parse("data\\namegen\\mingos_dwarf.cfg")
+	libtcod.namegen_parse("data\\namegen\\mingos_norse.cfg")
+	libtcod.namegen_parse("data\\namegen\\mingos_standard.cfg")
+	libtcod.namegen_parse("data\\namegen\\mingos_town.cfg")
 
-	PLAYER = gen_player((1, 1))
+	CLOCK = pygame.time.Clock()
 
+	SURFACE_MAIN = pygame.display.set_mode((constants.GAME_WIDTH, constants.GAME_HEIGHT))
 
-	GAME.current_objects.append(PLAYER)
-	
-	gen_undead((15, 15))
-	gen_undead((10, 15))
-	gen_undead((10, 10))
+	FOV_CALCULATE = True
 
+	ASSETS = struc_Assets()
+	GAME = obj_Game()
+	GAME.current_map = map_create()
 
-
-	gen_item((1, 2))
-	gen_item((2, 1))
-	gen_item((2, 2))
-	gen_item((3, 1))
-	gen_item((3, 2))
 
 def handle_player_input():
 	global FOV_CALCULATE
