@@ -47,6 +47,9 @@ class struc_Assets:
 
 		#sprites
 		self.S_RIBS = self.flesh_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_SHIELD = self.shield_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_SCROLL = self.scroll_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 		self.S_FLOOR = self.floor_sheet.get_image(1, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_FLOOR_EXPLORED = self.floor_sheet.get_image(1, 10, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
@@ -55,9 +58,19 @@ class struc_Assets:
 		self.S_WALL = self.wall_sheet.get_image(3, 3, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_WALL_EXPLORED = self.wall_sheet.get_image(3, 6, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
-		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-		self.S_SHIELD = self.shield_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
-		self.S_SCROLL = self.scroll_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
+		self.animation_dict = {
+		#animations
+		"A_PLAYER" : self.A_PLAYER,
+		"A_ZOMBIE" : self.A_ZOMBIE,
+		"A_ZOGRE" : self.A_ZOGRE,
+
+		#sprites
+		"S_RIBS" : self.S_RIBS,
+		"S_SWORD" : self.S_SWORD,
+		"S_SHIELD" : self.S_SHIELD,
+		"S_SCROLL" : self.S_SCROLL,
+		}
 
 
 
@@ -65,7 +78,7 @@ class struc_Assets:
 class obj_Actor:
 	def __init__(self,
 				x, y,
-				animation,
+				animation_key,
 				object_type,
 				object_name,
 				animation_speed = 1.0,
@@ -77,8 +90,8 @@ class obj_Actor:
 		
 		self.x = x #map address not pixel address
 		self.y = y
-		
-		self.animation = animation #list of images
+		self.animation_key = animation_key
+		self.animation = ASSETS.animation_dict[self.animation_key] #list of images
 		self.animation_speed = animation_speed/1.0 #in seconds
 		#animation flicker speed
 		self.flicker_speed = self.animation_speed/len(self.animation)
@@ -130,7 +143,7 @@ class obj_Actor:
 		is_visible = libtcod.map_is_in_fov(FOV_MAP, self.x, self.y)
 		if is_visible:
 			if len(self.animation) <= 1:
-				SURFACE_MAIN.blit(self.animation[0], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
+				SURFACE_MAP.blit(self.animation[0], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
 			elif len(self.animation) > 1:
 				if CLOCK.get_fps() > 0.0:
 					self.flicker_timer += 1/CLOCK.get_fps()
@@ -140,7 +153,7 @@ class obj_Actor:
 						self.sprite_image = 0
 					else:
 						self.sprite_image +=1
-				SURFACE_MAIN.blit(self.animation[self.sprite_image], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
+				SURFACE_MAP.blit(self.animation[self.sprite_image], (self.x*constants.CELL_WIDTH, self.y*constants.CELL_HEIGHT))
 
 	def distance_to(self, x, y):
 		"""
@@ -162,10 +175,46 @@ class obj_Actor:
 			dy = 0
 		self.creature.move(dx, dy)
 
+	def animation_destroy(self):
+		self.animation = None
+
+	def animation_init(self):
+		self.animation = ASSETS.animation_dict[self.animation_key]
+
 class obj_Game:
 	def __init__(self):
 		self.current_objects = []
 		self.message_history = []
+		self.past_maps = []
+		self.future_maps = []
+		self.current_map, self.current_rooms = map_create()
+
+	def next_map(self):
+		global FOV_CALCULATE
+		FOV_CALCULATE = True
+		if len(self.future_maps) == 0:
+			self.past_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
+			self.current_objects= [PLAYER]
+			self.current_map, self.current_rooms = map_create()
+			map_place_objects(self.current_rooms)
+		else:
+			self.past_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
+			self.current_objects= [PLAYER]
+			PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects = self.future_maps[-1]
+			map_make_fov(self.current_map)
+			del self.future_maps[-1]
+	def last_map(self):
+		global FOV_CALCULATE
+		FOV_CALCULATE = True
+		if len(self.past_maps) != 0:
+			self.future_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
+			self.current_objects= [PLAYER]
+			PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects = self.past_maps[-1]
+			map_make_fov(self.current_map)
+			del self.past_maps[-1]
+		else:
+			pass
+
 
 class obj_SpriteSheet:
 	"""
@@ -240,7 +289,56 @@ class obj_Room:
 
 		return objects_intersect
 	
+class obj_Camera:
+	def __init__(self):
+		self.width = constants.CAM_WIDTH
+		self.height = constants.CAM_HEIGHT
+		self.x, self.y = (0, 0)
 
+	def update(self, target_center, update_speed = 1):
+		global PLAYER
+		t_x, t_y = target_center
+		target_x = t_x * constants.CELL_WIDTH + (constants.CELL_WIDTH/2)
+		target_y = t_y * constants.CELL_HEIGHT + (constants.CELL_HEIGHT/2)
+		distance_x, distance_y = self.map_dist((target_x, target_y))
+		self.x += int(distance_x * update_speed)
+		self.y += int(distance_y * update_speed)
+
+
+	@property
+	def rectangle(self):
+		pos_rect = pygame.Rect((0, 0), (self.width, self.height))
+		pos_rect.center = (self.x, self.y)
+		return pos_rect
+
+	@property
+	def map_address(self):
+		map_x = self.x/constants.CELL_WIDTH
+		map_y = self.y/constans.CELL_HEIGHT
+
+	def win_to_map(self, coords):
+		tar_x, tar_y = coords
+		#convert window coords to distance from camera
+		cam_dx, cam_dy = self.cam_dist((tar_x, tar_y))
+		#distance from camera converted to a map coordinate
+		map_x = self.x + cam_dx
+		map_y = self.y + cam_dy
+		return map_x, map_y
+
+	#gets the distance from the camera center to an object on the map
+	def map_dist(self, coords):
+		new_x, new_y = coords
+		dist_x = new_x - self.x
+		dist_y = new_y - self.y
+		return (dist_x, dist_y)
+	#gets the pixel distance from the center of the camera
+	def cam_dist(self, coords):
+		window_x, window_y = coords
+		dist_x = window_x - self.width/2
+		dist_y = window_y - self.height/2
+		return (dist_x, dist_y)
+	
+	
 
 #COMPONENTS
 class com_Creature:
@@ -455,7 +553,8 @@ def death_monster(monster):
 	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
 	monster.creature = None
 	monster.ai = None
-	monster.animation = ASSETS.S_RIBS
+	monster.animation_key = "S_RIBS"
+	monster.animation = ASSETS.animation_dict[monster.animation_key]
 	monster.object_type = "Corpse"
 	monster.object_name += " Corpse"
 	monster.item = com_Item(use_function = cast_heal, use_func_helper = 6)
@@ -488,9 +587,7 @@ def map_create():
 		if not failed:
 			map_place_room(new_map, new_room)
 			current_center = new_room.center
-			if len(list_of_rooms) == 0:
-				gen_player(current_center)
-			else:
+			if len(list_of_rooms) != 0:
 				previous_center = list_of_rooms[-1].center
 				#dig tunnels
 				map_create_tunnels(current_center, previous_center, new_map)
@@ -500,6 +597,8 @@ def map_create():
 
 def map_place_objects(room_list):
 	for room in room_list:
+		if room == room_list[0]:
+			PLAYER.x, PLAYER.y = room_list[0].center
 		num_of_objects = libtcod.random_get_int(0, 0, 4)
 		if num_of_objects > 0:
 			for obj in range(num_of_objects):
@@ -526,14 +625,14 @@ def map_create_tunnels(room1_center, room2_center, used_map):
 	x2, y2 = room2_center
 	coin_flip = (libtcod.random_get_int(0, 0, 1) == 1)
 	if coin_flip:
-		for x in range(min(x1, x2), max(x1, x2)):
+		for x in range(min(x1, x2), max(x1, x2)+1):
 			used_map[x][y1].walkable = True
-		for y in range(min(y1, y2), max(y1, y2)):
+		for y in range(min(y1, y2), max(y1, y2)+1):
 			used_map[x2][y].walkable = True
 	else:
-		for y in range(min(y1, y2), max(y1, y2)):
+		for y in range(min(y1, y2), max(y1, y2)+1):
 			used_map[x1][y].walkable = True
-		for x in range(min(x1, x2), max(x1, x2)):
+		for x in range(min(x1, x2), max(x1, x2)+1):
 			used_map[x][y2].walkable = True
 		
 def map_creature_check(x, y, excluded_object = None):
@@ -611,14 +710,18 @@ def map_find_radius(coords, radius):
 #DRAWING
 
 def draw_game():
-	global SURFACE_MAIN
-	#TODO Clear the surface
+	global SURFACE_MAIN, SURFACE_MAP, CAMERA
+	#Clear the surface
 	SURFACE_MAIN.fill(constants.COLOR_DEFAULT_BG)
-	#TODO draw the map
+	SURFACE_MAP.fill(constants.COLOR_DEFAULT_BG)
+	#updates the camera
+	CAMERA.update((PLAYER.x, PLAYER.y))
+	#draw the map
 	draw_map(GAME.current_map)
 	#draw the character
 	for obj in GAME.current_objects:
 		obj.draw()
+	SURFACE_MAIN.blit(SURFACE_MAP, (0, 0), CAMERA.rectangle)
 
 	draw_debug()
 	draw_messages()
@@ -635,17 +738,17 @@ def draw_map(map_to_draw):
 
 				if map_to_draw[x][y].walkable == False:
 					#draw wall
-					SURFACE_MAIN.blit(ASSETS.S_WALL[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAP.blit(ASSETS.S_WALL[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 				else:
 					#draw floor
-					SURFACE_MAIN.blit(ASSETS.S_FLOOR[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAP.blit(ASSETS.S_FLOOR[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 			elif map_to_draw[x][y].explored:
 				if map_to_draw[x][y].walkable == False:
 					#draw wall
-					SURFACE_MAIN.blit(ASSETS.S_WALL_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAP.blit(ASSETS.S_WALL_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 				else:
 					#draw floor
-					SURFACE_MAIN.blit(ASSETS.S_FLOOR_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
+					SURFACE_MAP.blit(ASSETS.S_FLOOR_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 
 def draw_debug():
 	draw_text(SURFACE_MAIN, "FPS: " + str(int(CLOCK.get_fps())), (0, 0), constants.COLOR_WHITE, constants.COLOR_BLACK)
@@ -658,7 +761,7 @@ def draw_messages():
 		to_draw = GAME.message_history[-constants.NUM_MESSAGES:]
 
 	text_height = helper_text_height(constants.FONT_MESSAGES)
-	start_y = (constants.GAME_HEIGHT-(constants.NUM_MESSAGES*text_height))
+	start_y = (CAMERA.height-(constants.NUM_MESSAGES*text_height))
 
 	i = 0
 
@@ -677,6 +780,9 @@ def draw_text(display_surface, text, text_location, text_color, back_color = Non
 
 
 def draw_inspect_rect(coords, tile_color = constants.COLOR_RED, tile_alpha = 150, mark = None):
+	x, y = coords
+	new_x = x*constants.CELL_WIDTH
+	new_y = y*constants.CELL_HEIGHT
 	new_surface = pygame.Surface((constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 	new_surface.fill(tile_color)
@@ -684,7 +790,7 @@ def draw_inspect_rect(coords, tile_color = constants.COLOR_RED, tile_alpha = 150
 	if mark:
 		draw_text(new_surface, mark, (constants.CELL_WIDTH/2, constants.CELL_HEIGHT/2), constants.COLOR_BLACK, font = constants.FONT_CURSOR_TEXT, center = True)
 	
-	SURFACE_MAIN.blit(new_surface, coords)
+	SURFACE_MAP.blit(new_surface, (new_x, new_y))
 
 #Helpers
 
@@ -722,8 +828,10 @@ def menu_pause():
 			if event.type == pygame.KEYDOWN:
 				if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
 					menu_Open = False
-		draw_text(SURFACE_MAIN, menu_text, ((constants.GAME_WIDTH/2)-text_width/2, (constants.GAME_HEIGHT/2)-text_height/2), constants.COLOR_WHITE, constants.COLOR_BLACK)
-		
+			elif event.type == pygame.QUIT:
+				game_exit()
+		draw_text(SURFACE_MAIN, menu_text, ((CAMERA.width/2)-text_width/2, (CAMERA.height/2)-text_height/2), constants.COLOR_WHITE, constants.COLOR_BLACK)
+		pygame.display.flip()
 		CLOCK.tick(constants.FPS_LIMIT)
 
 def menu_inventory():
@@ -731,10 +839,8 @@ def menu_inventory():
 
 	menu_width = 216
 	menu_height = 216
-	menu_x = (constants.GAME_WIDTH/2) - menu_width/2
-	menu_y = (constants.GAME_HEIGHT/2) - menu_height/2
-
-
+	menu_x = (CAMERA.width/2) - menu_width/2
+	menu_y = (CAMERA.height/2) - menu_height/2
 
 	menu_font = constants.FONT_MESSAGES
 	menu_text_height = helper_text_height(menu_font)
@@ -759,18 +865,17 @@ def menu_inventory():
 
 		for event in inventory_events:
 			if event.type == pygame.QUIT:
-				pygame.quit()
-				exit()
+				game_exit()
 			if event.type == pygame.KEYDOWN:
 				if event.key == pygame.K_g or event.key == pygame.K_ESCAPE:
 					inv_Open = False
 				if event.key == pygame.K_s:
-					if selected_line == None or selected_line == (len(print_list)-1):
+					if selected_line == None or selected_line >= (len(print_list)-1):
 						selected_line = 0
 					else:
 						selected_line += 1
 				if event.key == pygame.K_w:
-					if selected_line == None or selected_line == 0:
+					if selected_line == None or selected_line == 0 or selected_line > (len(print_list)-1):
 						selected_line = len(print_list)-1
 					else:
 						selected_line -= 1
@@ -782,11 +887,12 @@ def menu_inventory():
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
 					if mouse_in_window and selected_line <= (len(print_list)-1):
-						PLAYER.container.inventory[selected_line].item.use()
 						inv_Open = False
+						PLAYER.container.inventory[selected_line].item.use()
 		
 		
 		#draw menu
+		max_lines = menu_height//menu_text_height
 		for line, (name) in enumerate(print_list):
 			if line == selected_line:
 				draw_text(local_inventory_surface, name, (0, 0+(line*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_GREY, menu_font)
@@ -798,60 +904,26 @@ def menu_inventory():
 		draw_game()
 		SURFACE_MAIN.blit(local_inventory_surface, ((menu_x), (menu_y)))
 		CLOCK.tick(constants.FPS_LIMIT)
-		pygame.display.update()
+		pygame.display.flip()
 
 def menu_tile_select(coords_origin = None, max_range = None, radius = None, penetrate_walls = True, pierce_creature = True):
 	menu_Open = True
 	if coords_origin:
 		map_coords_x, map_coords_y = coords_origin
 	else:
-		map_coords_x, map_coords_y = (0, 0)
+		map_coords_x, map_coords_y = (PLAYER.x, PLAYER.y)
 	while menu_Open:
-		draw_game()
 		inspect_events = pygame.event.get()
+		#get mouse position and speed. Sets the target map coordinates based on mouse position if the mouse moves.
 		if pygame.mouse.get_rel() != (0, 0):
 			mouse_x, mouse_y = pygame.mouse.get_pos()
-			map_coords_x = int(mouse_x/constants.CELL_WIDTH)
-			map_coords_y = int(mouse_y/constants.CELL_HEIGHT)
+			pxl_map_x, pxl_map_y = CAMERA.win_to_map((mouse_x, mouse_y))
+			map_coords_x = int(pxl_map_x/constants.CELL_WIDTH)
+			map_coords_y = int(pxl_map_y/constants.CELL_HEIGHT)
 
-		valid_tiles = []
-
-		if coords_origin:
-			full_list_of_tiles = map_find_line(coords_origin, (map_coords_x, map_coords_y))
-			for i, (x, y) in enumerate(full_list_of_tiles):
-				if max_range and i == max_range:
-					if i == max_range:
-						break
-				if not penetrate_walls and not map_wall_check(x, y):
-					break
-				if not pierce_creature and (map_creature_check(x, y)):
-				 	valid_tiles.append((x, y))
-				 	break
-				valid_tiles.append((x, y))
-		else:
-			valid_tiles =[(map_coords_x, map_coords_y)]
-
-		if radius:
-			if not valid_tiles:
-				valid_tiles.append(coords_origin)
-			area_effect = map_find_radius(valid_tiles[-1], radius)
-			for (tile_x, tile_y) in area_effect:
-				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT))
-
-		for (tile_x, tile_y) in valid_tiles:
-			if (tile_x, tile_y) == (map_coords_x, map_coords_y):
-				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT), tile_color = constants.COLOR_WHITE, mark = "X")
-			else:
-				draw_inspect_rect((tile_x*constants.CELL_WIDTH, tile_y*constants.CELL_HEIGHT), tile_color = constants.COLOR_WHITE)
-		
-		CLOCK.tick(constants.FPS_LIMIT)
-		
-		pygame.display.flip()
-		
 		for event in inspect_events:
 			if event.type == pygame.QUIT:
-				pygame.quit()
-				exit()
+				game_exit()
 			if event.type == pygame.KEYDOWN:
 				if event.key == pygame.K_v or event.key == pygame.K_c or event.key == pygame.K_e:
 					return (valid_tiles[-1])
@@ -872,9 +944,67 @@ def menu_tile_select(coords_origin = None, max_range = None, radius = None, pene
 					if map_coords_y < constants.MAP_WIDTH:
 						map_coords_x += 1
 			if event.type == pygame.MOUSEBUTTONDOWN:
-				if event.button == 1:
+				if event.button == 3:
 					return (valid_tiles[-1])
 					menu_Open = False
+				elif event.button == 1:
+					print(valid_tiles)
+
+		
+		valid_tiles = []
+
+		if coords_origin:
+			full_list_of_tiles = map_find_line(coords_origin, (map_coords_x, map_coords_y))
+			for i, (x, y) in enumerate(full_list_of_tiles):
+				if max_range and i == max_range:
+					if i == max_range:
+						break
+				if not penetrate_walls and not map_wall_check(x, y):
+					break
+				if not pierce_creature and (map_creature_check(x, y)):
+				 	valid_tiles.append((x, y))
+				 	break
+				valid_tiles.append((x, y))
+		else:
+			valid_tiles =[(map_coords_x, map_coords_y)]
+
+
+		#Clear the surface
+		SURFACE_MAIN.fill(constants.COLOR_DEFAULT_BG)
+		SURFACE_MAP.fill(constants.COLOR_DEFAULT_BG)
+		#updates the camera
+		CAMERA.update((PLAYER.x, PLAYER.y))
+		#draw the map
+		draw_map(GAME.current_map)
+		#draw the characters
+		for obj in GAME.current_objects:
+			obj.draw()
+
+
+		for (tile_x, tile_y) in valid_tiles:
+			if (tile_x, tile_y) == (map_coords_x, map_coords_y):
+				draw_inspect_rect((tile_x, tile_y), tile_color = constants.COLOR_WHITE, mark = "X")
+			else:
+				draw_inspect_rect((tile_x, tile_y), tile_color = constants.COLOR_WHITE)
+		if radius:
+			if not valid_tiles:
+				valid_tiles.append(coords_origin)
+			area_effect = map_find_radius(valid_tiles[-1], radius)
+			for (tile_x, tile_y) in area_effect:
+				draw_inspect_rect((tile_x, tile_y))
+		
+		
+		SURFACE_MAIN.blit(SURFACE_MAP, (0, 0), CAMERA.rectangle)
+
+
+		draw_debug()
+		draw_messages()
+		
+		pygame.display.flip()
+		
+		CLOCK.tick(constants.FPS_LIMIT)
+		
+		
 	
 #MAGIC
 def cast_heal(target, healing = 6):
@@ -950,19 +1080,14 @@ def gen_item(coords, forced_range = (1, 5)):
 	new_item = None
 	if generated_item == 1:
 		new_item = gen_lightning_scroll(coords)
-		print("Lightning")
 	elif generated_item == 2:
 		new_item = gen_fireball_scroll(coords)
-		print("Fire")
 	elif generated_item == 3:
 		new_item = gen_confusion_scroll(coords)
-		print("Confuse")
 	elif generated_item == 4:
 		new_item = gen_weapon_sword(coords)
-		print("Sword")
 	elif generated_item == 5:
 		new_item = gen_armour_shield(coords)
-		print("Shield")
 	return new_item
 	
 
@@ -970,7 +1095,7 @@ def gen_lightning_scroll(coords):
 	x, y = coords
 	max_range = libtcod.random_get_int(0, 6, 20)
 	damage = libtcod.random_get_int(0, 5, 10)
-	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Lightning Scroll", item = com_Item(use_function = cast_lightning, use_func_helper = (max_range, damage)))	
+	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Lightning Scroll", item = com_Item(use_function = cast_lightning, use_func_helper = (max_range, damage)))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
@@ -979,28 +1104,28 @@ def gen_fireball_scroll(coords):
 	max_range = libtcod.random_get_int(0, 6, 20)
 	damage = libtcod.random_get_int(0, 5, 10)
 	radius = libtcod.random_get_int(0, 1, 5)
-	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Fireball Scroll", item = com_Item(use_function = cast_fireball, use_func_helper = (max_range, radius, damage)))	
+	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Fireball Scroll", item = com_Item(use_function = cast_fireball, use_func_helper = (max_range, radius, damage)))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_confusion_scroll(coords):
 	x, y = coords
 	duration = libtcod.random_get_int(0, 1, 6)
-	returned_object = obj_Actor(x, y, ASSETS.S_SCROLL, "Scroll", "Confusion Scroll", item = com_Item(use_function = cast_confusion, use_func_helper = duration))	
+	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Confusion Scroll", item = com_Item(use_function = cast_confusion, use_func_helper = duration))	
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_weapon_sword(coords):
 	x, y = coords
 	bonus = libtcod.random_get_int(0, 1, 4)
-	returned_object = obj_Actor(x, y, ASSETS.S_SWORD, "Weapon", "+" + str(bonus) + " Sword", equipment = com_Equipment(atk_bonus = bonus, slot = "main_hand"))
+	returned_object = obj_Actor(x, y, "S_SWORD", "Weapon", "+" + str(bonus) + " Sword", equipment = com_Equipment(atk_bonus = bonus, slot = "main_hand"))
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_armour_shield(coords):
 	x, y = coords
 	bonus = libtcod.random_get_int(0, 1, 4)
-	returned_object = obj_Actor(x, y, ASSETS.S_SHIELD, "Armour", "+" + str(bonus) + " Shield", equipment = com_Equipment(def_bonus = bonus, slot = "off_hand"))
+	returned_object = obj_Actor(x, y, "S_SHIELD", "Armour", "+" + str(bonus) + " Shield", equipment = com_Equipment(def_bonus = bonus, slot = "off_hand"))
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
@@ -1008,7 +1133,7 @@ def gen_armour_shield(coords):
 def gen_player(coords):
 	global PLAYER, GAME
 	x, y = coords
-	PLAYER = obj_Actor(x, y, ASSETS.A_PLAYER, "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
+	PLAYER = obj_Actor(x, y, "A_PLAYER", "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
 	GAME.current_objects.append(PLAYER)
 	return PLAYER
 
@@ -1025,14 +1150,14 @@ def gen_undead(coords, forced_range = (1, 100)):
 def gen_zombie(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Fantasy female")
-	returned_object = obj_Actor(x, y, ASSETS.A_ZOMBIE, "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
+	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
 def gen_zogre(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Celtic male")
-	returned_object = obj_Actor(x, y, ASSETS.A_ZOGRE, "Undead", "Zogre", creature = com_Creature(creature_name, hp = 15, base_atk = 5, base_def = 1, death_function = death_monster), ai = com_AI_zombie())
+	returned_object = obj_Actor(x, y, "A_ZOGRE", "Undead", "Zogre", creature = com_Creature(creature_name, hp = 15, base_atk = 5, base_def = 1, death_function = death_monster), ai = com_AI_zombie())
 	GAME.current_objects.append(returned_object)
 	return returned_object
 
@@ -1075,12 +1200,11 @@ def game_main_loop():
 		pygame.display.flip()
 
 	#TODO quit the game
-	pygame.quit()
-	exit()
+	game_exit()
 
 def game_initialize():
 	"""This functions initiatlizes the main window in pygame"""
-	global SURFACE_MAIN, GAME, PLAYER, FOV_CALCULATE, CLOCK, ASSETS
+	global SURFACE_MAIN, SURFACE_MAP, PLAYER, FOV_CALCULATE, CLOCK, ASSETS, CAMERA
 
 	pygame.init()
 	pygame.key.set_repeat(555, 85)	
@@ -1099,15 +1223,26 @@ def game_initialize():
 
 	CLOCK = pygame.time.Clock()
 
-	SURFACE_MAIN = pygame.display.set_mode((constants.GAME_WIDTH, constants.GAME_HEIGHT))
+	CAMERA = obj_Camera()
+
+	SURFACE_MAIN = pygame.display.set_mode((CAMERA.width, CAMERA.height))
+
+	SURFACE_MAP = pygame.Surface((constants.GAME_WIDTH, constants.GAME_HEIGHT))
 
 	FOV_CALCULATE = True
 
 	ASSETS = struc_Assets()
-	GAME = obj_Game()
-	GAME.current_map, GAME.current_rooms = map_create()
-	map_place_objects(GAME.current_rooms)
+	
+	try:
+		load_game()
+	except:
+	 	game_new()
 
+def game_new():
+	global GAME
+	GAME = obj_Game()
+	gen_player((0,0))
+	map_place_objects(GAME.current_rooms)
 
 def handle_player_input():
 	global FOV_CALCULATE
@@ -1116,8 +1251,7 @@ def handle_player_input():
 	#TODO process player input
 	for event in events_list:
 		if event.type == pygame.QUIT:
-			pygame.quit()
-			exit()
+			game_exit()
 			return "QUIT"
 		if event.type == pygame.KEYDOWN:
 			if event.key == pygame.K_w:
@@ -1153,10 +1287,17 @@ def handle_player_input():
 				return "player-looked"
 			if event.key == pygame.K_SPACE:
 				return "player_passed"
+			if event.key == pygame.K_l:
+				GAME.next_map()
+			if event.key == pygame.K_o:
+				GAME.last_map()
 		if event.type == pygame.MOUSEBUTTONDOWN:
-			if event.button == 1:
+			if event.button == 3:
 				mouse_x, mouse_y = pygame.mouse.get_pos()
-				PLAYER.move_towards(int(mouse_x/constants.CELL_WIDTH), int(mouse_y/constants.CELL_HEIGHT))
+				pxl_map_x, pxl_map_y = CAMERA.win_to_map((mouse_x, mouse_y))
+				map_coords_x = int(pxl_map_x/constants.CELL_WIDTH)
+				map_coords_y = int(pxl_map_y/constants.CELL_HEIGHT)
+				PLAYER.move_towards(map_coords_x, map_coords_y)
 				FOV_CALCULATE = True
 				return "player-moved"
 
@@ -1166,6 +1307,32 @@ def handle_player_input():
 def game_message(game_msg, msg_color = constants.COLOR_WHITE):
 	GAME.message_history.append((game_msg, msg_color))
 
+def save_game():
+	for obj in GAME.current_objects:
+		obj.animation_destroy()
+		if obj.container:
+			for item in obj.container.inventory:
+				item.animation_destroy()
+	#open a new empty shelve (possibly overwriting an old one) to write the game data
+	with gzip.open('data\save_data\savegame', 'wb') as file:
+		pickle.dump([GAME, PLAYER], file)
+	file.close()
+
+def load_game():
+	global GAME, PLAYER
+	with gzip.open('data\save_data\savegame', 'rb') as file:
+		GAME, PLAYER = pickle.load(file)
+	map_make_fov(GAME.current_map)
+	for obj in GAME.current_objects:
+		obj.animation_init()
+		if obj.container:
+			for item in obj.container.inventory:
+				item.animation_init()
+
+def game_exit():
+	save_game()
+	pygame.quit()
+	exit()
 
 #EXECUTE GAME
 if __name__ == "__main__":
