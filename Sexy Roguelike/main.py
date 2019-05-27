@@ -35,6 +35,8 @@ class struc_Assets:
 		self.wall_sheet = obj_SpriteSheet("data/DawnLike/Objects/Wall.png")
 		self.scroll_sheet = obj_SpriteSheet("data/DawnLike/Items/Scroll.png")
 		self.flesh_sheet = obj_SpriteSheet("data/DawnLike/Items/Flesh.png")
+		self.tile_sheet = obj_SpriteSheet("data/DawnLike/Objects/Tile.png")
+		self.potion_sheet = obj_SpriteSheet("data/DawnLike/Items/Potion.png")
 
 		#animations
 		self.A_PLAYER = self.player0_sheet.get_image(0, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
@@ -50,6 +52,10 @@ class struc_Assets:
 		self.S_SWORD = self.med_wep_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_SHIELD = self.shield_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_SCROLL = self.scroll_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_HEALTH_POTION = self.potion_sheet.get_image(0, 0, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+
+		self.S_STAIRS_UP =  self.tile_sheet.get_image(4, 3, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
+		self.S_STAIRS_DOWN = self.tile_sheet.get_image(6, 3, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
 		self.S_FLOOR = self.floor_sheet.get_image(1, 7, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_FLOOR_EXPLORED = self.floor_sheet.get_image(1, 10, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
@@ -70,6 +76,9 @@ class struc_Assets:
 		"S_SWORD" : self.S_SWORD,
 		"S_SHIELD" : self.S_SHIELD,
 		"S_SCROLL" : self.S_SCROLL,
+		"S_HEALTH_POTION": self.S_HEALTH_POTION,
+		"S_STAIRS_UP" : self.S_STAIRS_UP,
+		"S_STAIRS_DOWN" : self.S_STAIRS_DOWN
 		}
 
 
@@ -86,7 +95,8 @@ class obj_Actor:
 				ai = None,
 				container = None,
 				item = None,
-				equipment = None):
+				equipment = None,
+				stairs = None):
 		
 		self.x = x #map address not pixel address
 		self.y = y
@@ -123,6 +133,10 @@ class obj_Actor:
 			if not self.item:
 				self.item = com_Item()
 				self.item.owner = self
+		
+		self.stairs = stairs
+		if stairs:
+			self.stairs.owner = self
 	
 	@property
 	def display_name(self):
@@ -173,7 +187,7 @@ class obj_Actor:
 		else:
 			dx = 0
 			dy = 0
-		self.creature.move(dx, dy)
+		self.creature.move((dx, dy))
 
 	def animation_destroy(self):
 		self.animation = None
@@ -193,23 +207,46 @@ class obj_Game:
 		global FOV_CALCULATE
 		FOV_CALCULATE = True
 		if len(self.future_maps) == 0:
+			for obj in self.current_objects:
+				obj.animation_destroy()
 			self.past_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
 			self.current_objects= [PLAYER]
+			PLAYER.animation_init()
 			self.current_map, self.current_rooms = map_create()
 			map_place_objects(self.current_rooms)
 		else:
+			for obj in self.current_objects:
+				obj.animation_destroy()
+				if obj.container:
+					for item in obj.container.inventory:
+						item.animation_destroy()
 			self.past_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
 			self.current_objects= [PLAYER]
 			PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects = self.future_maps[-1]
+			for obj in self.current_objects:
+				obj.animation_init()
+				if obj.container:
+					for item in obj.container.inventory:
+						item.animation_init()
 			map_make_fov(self.current_map)
 			del self.future_maps[-1]
 	def last_map(self):
 		global FOV_CALCULATE
 		FOV_CALCULATE = True
 		if len(self.past_maps) != 0:
+			for obj in self.current_objects:
+				obj.animation_destroy()
+				if obj.container:
+					for item in obj.container.inventory:
+						item.animation_destroy()
 			self.future_maps.append((PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects))
 			self.current_objects= [PLAYER]
 			PLAYER.x, PLAYER.y, self.current_map, self.current_rooms, self.current_objects = self.past_maps[-1]
+			for obj in self.current_objects:
+				obj.animation_init()
+				if obj.container:
+					for item in obj.container.inventory:
+						item.animation_init()
 			map_make_fov(self.current_map)
 			del self.past_maps[-1]
 		else:
@@ -356,7 +393,8 @@ class com_Creature:
 		self.base_def = base_def
 		self.death_function = death_function
 
-	def move(self, dx, dy):
+	def move(self, coords):
+		dx, dy = coords
 		tile_is_walkable = GAME.current_map[self.owner.x + dx][self.owner.y + dy].walkable
 		TARGET = None
 		TARGET = map_creature_check(self.owner.x + dx, self.owner.y + dy, self.owner)
@@ -421,16 +459,18 @@ class com_Item:
 	def pick_up(self, actor):
 		if actor.container:
 			if actor.container.volume + self.volume > actor.container.max_volume:
-				game_message("Not enough room.", constants.COLOR_WHITE)
+				if actor == PLAYER:
+					game_message("Not enough room.", constants.COLOR_WHITE)
 			else:
-				game_message("Picking up", constants.COLOR_WHITE)
+				if actor == PLAYER:
+					game_message("Picking up", constants.COLOR_WHITE)
 				actor.container.inventory.append(self.owner)
 				GAME.current_objects.remove(self.owner)
 				self.current_container = actor.container
 					
 	#drop item
 	def drop(self, new_x, new_y):
-		GAME.current_objects.append(self.owner)
+		GAME.current_objects.insert(1, self.owner)
 		self.current_container.inventory.remove(self.owner)
 		self.owner.x = new_x
 		self.owner.y = new_y
@@ -526,7 +566,7 @@ class com_AI_Confused:
 		if x == 0 and y == 0:
 			self.owner.creature.attack(TARGET = self.owner)
 		else:
-			self.owner.creature.move(x, y)
+			self.owner.creature.move((x, y))
 		self.turn_counter += 1
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = self.old_ai
@@ -549,6 +589,17 @@ class com_AI_zombie:
 		if self.turn_counter == self.num_turns:
 			self.owner.ai = old_ai
 
+class com_Stairs:
+	def __init__(self, downwards = True):
+		self.downwards = downwards
+	def use(self):
+		if self.downwards:
+			GAME.next_map()
+		else:
+			GAME.last_map()
+
+
+#DEATH FUNCTIONS
 def death_monster(monster):
 	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
 	monster.creature = None
@@ -557,11 +608,12 @@ def death_monster(monster):
 	monster.animation = ASSETS.animation_dict[monster.animation_key]
 	monster.object_type = "Corpse"
 	monster.object_name += " Corpse"
-	monster.item = com_Item(use_function = cast_heal, use_func_helper = 6)
+	monster.item = com_Item()
 	monster.item.owner = monster
 	if monster.container:
-		for item in monster.container:
-			monster.container.inventory[item].item.drop(monster.x, monster.y)
+		if len(monster.container.inventory) >= 1:
+			for item in monster.container.inventory:
+				item.item.drop(monster.x, monster.y)
 
 
 
@@ -599,6 +651,8 @@ def map_place_objects(room_list):
 	for room in room_list:
 		if room == room_list[0]:
 			PLAYER.x, PLAYER.y = room_list[0].center
+			if len(GAME.past_maps) > 0:
+				gen_stairs(room_list[0].center, False)
 		num_of_objects = libtcod.random_get_int(0, 0, 4)
 		if num_of_objects > 0:
 			for obj in range(num_of_objects):
@@ -612,6 +666,9 @@ def map_place_objects(room_list):
 						gen_undead((obj_x, obj_y))
 					else:
 						gen_item((obj_x, obj_y))
+	gen_stairs(room_list[-1].center, True)
+		
+
 
 
 def map_place_room(new_map, placed_room):
@@ -841,10 +898,10 @@ def menu_inventory():
 	menu_height = 216
 	menu_x = (CAMERA.width/2) - menu_width/2
 	menu_y = (CAMERA.height/2) - menu_height/2
-
+	starting_line = 0
 	menu_font = constants.FONT_MESSAGES
 	menu_text_height = helper_text_height(menu_font)
-	
+	max_lines = 14
 	local_inventory_surface = pygame.Surface((menu_width, menu_height))
 	selected_line = None
 	while inv_Open:
@@ -852,7 +909,6 @@ def menu_inventory():
 		local_inventory_surface.fill(constants.COLOR_BLACK)
 		#register changes
 		print_list = [obj.display_name for obj in PLAYER.container.inventory]
-		
 		inventory_events = pygame.event.get()
 		mouse_x, mouse_y = pygame.mouse.get_pos()
 		rel_mouse_x = mouse_x - menu_x
@@ -862,6 +918,7 @@ def menu_inventory():
 
 		if (pygame.mouse.get_rel() != (0, 0)) and mouse_in_window:
 			selected_line = int(rel_mouse_y/menu_text_height)
+			selected_line += starting_line
 
 		for event in inventory_events:
 			if event.type == pygame.QUIT:
@@ -870,13 +927,33 @@ def menu_inventory():
 				if event.key == pygame.K_g or event.key == pygame.K_ESCAPE:
 					inv_Open = False
 				if event.key == pygame.K_s:
-					if selected_line == None or selected_line >= (len(print_list)-1):
-						selected_line = 0
+					if selected_line == None or selected_line >= (len(print_list)) or selected_line >= ending_line-1:
+						if selected_line != None and selected_line >= ending_line-1 and selected_line <= (len(print_list)):
+							starting_line += 1
+							selected_line += 1
+							if max_lines < len(print_list):
+								max_lines += 1
+						else:
+							selected_line = 0
+							if starting_line != 0:
+								starting_line = 0
+								max_lines = 14
 					else:
 						selected_line += 1
 				if event.key == pygame.K_w:
-					if selected_line == None or selected_line == 0 or selected_line > (len(print_list)-1):
-						selected_line = len(print_list)-1
+					if selected_line == None or selected_line == 0 or selected_line <= starting_line:
+						if selected_line != None and selected_line < starting_line and selected_line != 0:
+							starting_line -= 1
+							selected_line -= 1
+							if max_lines > 14:
+								max_lines -= 1
+							if starting_line != 0:
+								starting_line = 0
+								max_lines = 13
+						else:
+							selected_line = len(print_list)-1
+							max_lines = len(print_list)-1
+							starting_line = max_lines-14
 					else:
 						selected_line -= 1
 				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
@@ -884,21 +961,28 @@ def menu_inventory():
 					inv_Open = False
 				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
 						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
+
+				print(starting_line)
+				print(selected_line)
+				print(ending_line)
+				print(len(print_list)-1)
+			
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
 					if mouse_in_window and selected_line <= (len(print_list)-1):
 						inv_Open = False
 						PLAYER.container.inventory[selected_line].item.use()
 		
-		
 		#draw menu
-		max_lines = menu_height//menu_text_height
-		for line, (name) in enumerate(print_list):
+		if len(print_list) < max_lines:
+			ending_line = len(print_list)-1
+		else:
+			ending_line = max_lines
+		for line in range(starting_line, ending_line):
 			if line == selected_line:
-				draw_text(local_inventory_surface, name, (0, 0+(line*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_GREY, menu_font)
+				draw_text(local_inventory_surface, print_list[line], (0, 0+((line-starting_line)*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_GREY, menu_font)
 			else:
-				draw_text(local_inventory_surface, name, (0, 0+(line*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_BLACK, menu_font)
-			line += 1
+				draw_text(local_inventory_surface, print_list[line], (0, 0+((line-starting_line)*menu_text_height)), constants.COLOR_WHITE, constants.COLOR_BLACK, menu_font)
 	
 		#display menu
 		draw_game()
@@ -1073,30 +1157,31 @@ def cast_confusion(caster, duration = 5):
 #GENERATORS
 
 #items
-def gen_item(coords, forced_range = (1, 5)):
+def gen_item(coords, forced_range = (1, 11)):
 	global GAME
 	r_min, r_max = forced_range
 	generated_item = libtcod.random_get_int(0, r_min, r_max)
 	new_item = None
-	if generated_item == 1:
+	if generated_item == 1 or 2:
 		new_item = gen_lightning_scroll(coords)
-	elif generated_item == 2:
+	elif generated_item == 3 or 4:
 		new_item = gen_fireball_scroll(coords)
-	elif generated_item == 3:
+	elif generated_item == 5 or 6:
 		new_item = gen_confusion_scroll(coords)
-	elif generated_item == 4:
+	elif generated_item == 7 or 8:
 		new_item = gen_weapon_sword(coords)
-	elif generated_item == 5:
+	elif generated_item == 9 or 10:
 		new_item = gen_armour_shield(coords)
+	elif generated_item == 11:
+		new_item = gen_healing_potion(coords)
 	return new_item
-	
 
 def gen_lightning_scroll(coords):
 	x, y = coords
 	max_range = libtcod.random_get_int(0, 6, 20)
 	damage = libtcod.random_get_int(0, 5, 10)
 	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Lightning Scroll", item = com_Item(use_function = cast_lightning, use_func_helper = (max_range, damage)))	
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
 def gen_fireball_scroll(coords):
@@ -1105,31 +1190,37 @@ def gen_fireball_scroll(coords):
 	damage = libtcod.random_get_int(0, 5, 10)
 	radius = libtcod.random_get_int(0, 1, 5)
 	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Fireball Scroll", item = com_Item(use_function = cast_fireball, use_func_helper = (max_range, radius, damage)))	
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
 def gen_confusion_scroll(coords):
 	x, y = coords
 	duration = libtcod.random_get_int(0, 1, 6)
 	returned_object = obj_Actor(x, y, "S_SCROLL", "Scroll", "Confusion Scroll", item = com_Item(use_function = cast_confusion, use_func_helper = duration))	
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
+
+def gen_healing_potion(coords):
+	x, y = coords
+	healing = libtcod.random_get_int(0, 2, 10)
+	returned_object = obj_Actor(x, y, "S_HEALING_POTION", "Potion", "Healing Potion", item = com_Item(use_function = cast_heal, use_func_helper = healing))	
 
 def gen_weapon_sword(coords):
 	x, y = coords
 	bonus = libtcod.random_get_int(0, 1, 4)
 	returned_object = obj_Actor(x, y, "S_SWORD", "Weapon", "+" + str(bonus) + " Sword", equipment = com_Equipment(atk_bonus = bonus, slot = "main_hand"))
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
 def gen_armour_shield(coords):
 	x, y = coords
 	bonus = libtcod.random_get_int(0, 1, 4)
 	returned_object = obj_Actor(x, y, "S_SHIELD", "Armour", "+" + str(bonus) + " Shield", equipment = com_Equipment(def_bonus = bonus, slot = "off_hand"))
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
-#enemies
+
+#characters
 def gen_player(coords):
 	global PLAYER, GAME
 	x, y = coords
@@ -1146,20 +1237,46 @@ def gen_undead(coords, forced_range = (1, 100)):
 	else:
 		gen_zogre(coords)
 
-
 def gen_zombie(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Fantasy female")
-	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
-	GAME.current_objects.append(returned_object)
+	carried_items = []
+	num_carried_items = libtcod.random_get_int(0, 0, 8)
+	num_carried_items -= 3
+	if num_carried_items > 0:
+		for item in range(num_carried_items):
+			new_item = gen_item((0, 0), (1, 11))
+			carried_items.append(new_item)
+			GAME.current_objects.append(new_item)
+	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container())
+	for obj in carried_items:
+		obj.item.pick_up(returned_object)
+		if obj.equipment:
+			obj.item.use()
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
 def gen_zogre(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Celtic male")
 	returned_object = obj_Actor(x, y, "A_ZOGRE", "Undead", "Zogre", creature = com_Creature(creature_name, hp = 15, base_atk = 5, base_def = 1, death_function = death_monster), ai = com_AI_zombie())
-	GAME.current_objects.append(returned_object)
+	GAME.current_objects.insert(1, returned_object)
 	return returned_object
+
+#decorum
+def gen_stairs(coords, downwards):
+	global GAME
+	x, y = coords
+	if downwards:
+		stairs_com = com_Stairs(True)
+		stairs = obj_Actor(x, y, "S_STAIRS_DOWN", "Stairs", "Stairs Down", stairs = stairs_com)
+		GAME.current_objects.insert(0, stairs)
+		return stairs
+	else:
+		stairs_com = com_Stairs(False)
+		stairs = obj_Actor(x, y, "S_STAIRS_UP", "Stairs", "Stairs Up", stairs = stairs_com)
+		GAME.current_objects.insert(0, stairs)
+		return stairs
 
 
 #GAME FUNCTIONS
@@ -1255,19 +1372,19 @@ def handle_player_input():
 			return "QUIT"
 		if event.type == pygame.KEYDOWN:
 			if event.key == pygame.K_w:
-				PLAYER.creature.move(0, -1)
+				PLAYER.creature.move((0, -1))
 				FOV_CALCULATE = True
 				return "player-moved"
 			if event.key == pygame.K_s:
-				PLAYER.creature.move(0, 1)
+				PLAYER.creature.move((0, 1))
 				FOV_CALCULATE = True
 				return "player-moved"
 			if event.key == pygame.K_a:
-				PLAYER.creature.move(-1, 0)
+				PLAYER.creature.move((-1, 0))
 				FOV_CALCULATE = True
 				return "player-moved"
 			if event.key == pygame.K_d:
-				PLAYER.creature.move(1, 0)
+				PLAYER.creature.move((1, 0))
 				FOV_CALCULATE = True
 				return "player-moved"
 			if event.key == pygame.K_e:
@@ -1275,6 +1392,10 @@ def handle_player_input():
 				for obj in objects_at_player:
 					if obj.item:
 						obj.item.pick_up(PLAYER)
+				for obj in objects_at_player:
+					if obj.stairs:
+						obj.stairs.use()
+				
 			if event.key == pygame.K_f:
 				if len(PLAYER.container.inventory) > 0:
 					PLAYER.container.inventory[-1].item.drop(PLAYER.x, PLAYER.y)
@@ -1305,7 +1426,11 @@ def handle_player_input():
 	return "no-action"
 
 def game_message(game_msg, msg_color = constants.COLOR_WHITE):
-	GAME.message_history.append((game_msg, msg_color))
+	text_width = helper_text_width(constants.FONT_MESSAGES)
+	max_chars = CAMERA.width//text_width
+	wrapped_text = textwrap.wrap(game_msg, max_chars)
+	for msg in wrapped_text:
+		GAME.message_history.append((msg, msg_color))
 
 def save_game():
 	for obj in GAME.current_objects:

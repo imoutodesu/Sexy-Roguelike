@@ -1,1 +1,3 @@
-None :)
+Inventory is fucky, but functional
+scrolling up if the inventory has less than 14 items crashes the game
+zombie items drop onto the ground, and only lightning scrolls
