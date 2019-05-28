@@ -18,11 +18,18 @@ import dungeonGenerationAlgorithms as dGA
 #STRUCTURES
 
 class struc_Tile:
-	def __init__(self, walkable):
+	def __init__(self, walkable, blocks_fov = None):
+		#creates map tiles
 		self.walkable = walkable
 		self.explored = False
+		if blocks_fov == None:
+			self.blocks_fov = not self.walkable
+		else:
+			self.blocks_fov = self.blocks_fov
+
 
 class struc_Assets:
+	"""All of the assets in the game"""
 	def __init__(self):
 		#spritesheets
 		self.player0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player0.png")
@@ -64,7 +71,7 @@ class struc_Assets:
 		self.S_WALL = self.wall_sheet.get_image(3, 3, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 		self.S_WALL_EXPLORED = self.wall_sheet.get_image(3, 6, 16, 16, (constants.CELL_WIDTH, constants.CELL_HEIGHT))
 
-
+		#used by actors to convret a string into an animation
 		self.animation_dict = {
 		#animations
 		"A_PLAYER" : self.A_PLAYER,
@@ -467,9 +474,12 @@ class com_Item:
 				actor.container.inventory.append(self.owner)
 				GAME.current_objects.remove(self.owner)
 				self.current_container = actor.container
+				print(self.current_container.owner.object_name)
 					
 	#drop item
 	def drop(self, new_x, new_y):
+		if self.owner.equipment:
+			self.owner.equipment.unequip()
 		GAME.current_objects.insert(1, self.owner)
 		self.current_container.inventory.remove(self.owner)
 		self.owner.x = new_x
@@ -520,13 +530,16 @@ class com_Equipment:
 		all_equipped_items = self.owner.item.current_container.equipped_items
 		for item in all_equipped_items:
 			if item.equipment.slot == self.slot:
-				game_message("That slot is occupied!", constants.COLOR_RED)
+				if self.owner.item.current_container.owner == PLAYER:
+					game_message("That slot is occupied!", constants.COLOR_RED)
 				return
 		self.equipped = True
-		game_message("Item equipped")
+		if self.owner.item.current_container.owner == PLAYER:
+			game_message("Item equipped")
 	def unequip(self):
 		self.equipped = False
-		game_message("Item unequipped")
+		if self.owner.item.current_container.owner == PLAYER:
+			game_message("Item unequipped")
 
 class com_Container:
 	def __init__(self, volume = 10.00, inventory = [], weight = 0.00):
@@ -602,6 +615,10 @@ class com_Stairs:
 #DEATH FUNCTIONS
 def death_monster(monster):
 	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
+	if monster.container:
+		if len(monster.container.inventory) >= 1:
+			for item in monster.container.inventory:
+				item.item.drop(monster.x, monster.y)
 	monster.creature = None
 	monster.ai = None
 	monster.animation_key = "S_RIBS"
@@ -610,10 +627,6 @@ def death_monster(monster):
 	monster.object_name += " Corpse"
 	monster.item = com_Item()
 	monster.item.owner = monster
-	if monster.container:
-		if len(monster.container.inventory) >= 1:
-			for item in monster.container.inventory:
-				item.item.drop(monster.x, monster.y)
 
 
 
@@ -962,10 +975,10 @@ def menu_inventory():
 				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
 						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
 
-				print(starting_line)
-				print(selected_line)
-				print(ending_line)
-				print(len(print_list)-1)
+				# print(starting_line)
+				# print(selected_line)
+				# print(ending_line)
+				# print(len(print_list)-1)
 			
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
@@ -1162,15 +1175,15 @@ def gen_item(coords, forced_range = (1, 11)):
 	r_min, r_max = forced_range
 	generated_item = libtcod.random_get_int(0, r_min, r_max)
 	new_item = None
-	if generated_item == 1 or 2:
+	if generated_item == 1 or generated_item == 2:
 		new_item = gen_lightning_scroll(coords)
-	elif generated_item == 3 or 4:
+	elif generated_item == 3 or generated_item == 4:
 		new_item = gen_fireball_scroll(coords)
-	elif generated_item == 5 or 6:
+	elif generated_item == 5 or generated_item == 6:
 		new_item = gen_confusion_scroll(coords)
-	elif generated_item == 7 or 8:
+	elif generated_item == 7 or generated_item == 8:
 		new_item = gen_weapon_sword(coords)
-	elif generated_item == 9 or 10:
+	elif generated_item == 9 or generated_item == 10:
 		new_item = gen_armour_shield(coords)
 	elif generated_item == 11:
 		new_item = gen_healing_potion(coords)
@@ -1203,7 +1216,7 @@ def gen_confusion_scroll(coords):
 def gen_healing_potion(coords):
 	x, y = coords
 	healing = libtcod.random_get_int(0, 2, 10)
-	returned_object = obj_Actor(x, y, "S_HEALING_POTION", "Potion", "Healing Potion", item = com_Item(use_function = cast_heal, use_func_helper = healing))	
+	returned_object = obj_Actor(x, y, "S_HEALTH_POTION", "Potion", "Healing Potion", item = com_Item(use_function = cast_heal, use_func_helper = healing))	
 
 def gen_weapon_sword(coords):
 	x, y = coords
@@ -1249,12 +1262,14 @@ def gen_zombie(coords):
 			carried_items.append(new_item)
 			GAME.current_objects.append(new_item)
 	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container())
-	for obj in carried_items:
-		obj.item.pick_up(returned_object)
-		if obj.equipment:
-			obj.item.use()
-	GAME.current_objects.insert(1, returned_object)
-	return returned_object
+	if len(carried_items) >= 1:
+		for obj in carried_items:
+			if obj != None:
+				obj.item.pick_up(returned_object)
+				if obj.equipment:
+					obj.item.use()
+		GAME.current_objects.insert(1, returned_object)
+		return returned_object
 
 def gen_zogre(coords):
 	x, y = coords
