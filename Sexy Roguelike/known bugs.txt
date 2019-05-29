@@ -1,4 +1,3 @@
-Inventory is fucky, but functional
-scrolling up if the inventory has less than 14 items crashes the game
+inventory scrolling is abit funky
 items randomly transform into different items upon pickup
 player spawns with items in their inventory

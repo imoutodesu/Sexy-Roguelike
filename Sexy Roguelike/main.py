@@ -941,7 +941,7 @@ def menu_inventory():
 					inv_Open = False
 				if event.key == pygame.K_s:
 					if selected_line == None or selected_line >= (len(print_list)) or selected_line >= ending_line-1:
-						if selected_line != None and selected_line >= ending_line-1 and selected_line <= (len(print_list)):
+						if selected_line != None and selected_line >= ending_line-1 and selected_line <= (len(print_list)-2):
 							starting_line += 1
 							selected_line += 1
 							if max_lines < len(print_list):
@@ -955,7 +955,7 @@ def menu_inventory():
 						selected_line += 1
 				if event.key == pygame.K_w:
 					if selected_line == None or selected_line == 0 or selected_line <= starting_line:
-						if selected_line != None and selected_line < starting_line and selected_line != 0:
+						if selected_line != None and selected_line == starting_line and selected_line != 0:
 							starting_line -= 1
 							selected_line -= 1
 							if max_lines > 14:
@@ -965,8 +965,11 @@ def menu_inventory():
 								max_lines = 13
 						else:
 							selected_line = len(print_list)-1
-							max_lines = len(print_list)-1
-							starting_line = max_lines-14
+							max_lines = len(print_list)
+							if (len(print_list)-1) > 14:
+								starting_line = max_lines-14
+							else:
+								max_lines = len(print_list)
 					else:
 						selected_line -= 1
 				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
@@ -975,10 +978,10 @@ def menu_inventory():
 				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
 						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
 
-				# print(starting_line)
-				# print(selected_line)
-				# print(ending_line)
-				# print(len(print_list)-1)
+				print(starting_line)
+				print(selected_line)
+				print(ending_line)
+				print(len(print_list)-1)
 			
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
@@ -988,7 +991,7 @@ def menu_inventory():
 		
 		#draw menu
 		if len(print_list) < max_lines:
-			ending_line = len(print_list)-1
+			ending_line = len(print_list)
 		else:
 			ending_line = max_lines
 		for line in range(starting_line, ending_line):
@@ -1254,22 +1257,22 @@ def gen_zombie(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Fantasy female")
 	carried_items = []
-	num_carried_items = libtcod.random_get_int(0, 0, 8)
-	num_carried_items -= 3
-	if num_carried_items > 0:
-		for item in range(num_carried_items):
-			new_item = gen_item((0, 0), (1, 11))
-			carried_items.append(new_item)
-			GAME.current_objects.append(new_item)
-	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container())
-	if len(carried_items) >= 1:
-		for obj in carried_items:
-			if obj != None:
-				obj.item.pick_up(returned_object)
-				if obj.equipment:
-					obj.item.use()
-		GAME.current_objects.insert(1, returned_object)
-		return returned_object
+	# num_carried_items = libtcod.random_get_int(0, 0, 8)
+	# num_carried_items -= 3
+	# if num_carried_items > 0:
+	# 	for item in range(num_carried_items):
+	# 		new_item = gen_item((0, 0), (1, 11))
+	# 		carried_items.append(new_item)
+	# 		GAME.current_objects.append(new_item)
+	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
+	# if len(carried_items) >= 1:
+	# 	for obj in carried_items:
+	# 		if obj != None:
+	# 			obj.item.pick_up(returned_object)
+	# 			if obj.equipment:
+	# 				obj.item.use()
+	GAME.current_objects.insert(1, returned_object)
+	return returned_object
 
 def gen_zogre(coords):
 	x, y = coords
