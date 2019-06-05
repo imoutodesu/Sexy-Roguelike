@@ -1,3 +1,2 @@
-inventory scrolling is abit funky
-items randomly transform into different items upon pickup
-player spawns with items in their inventory
+#only if I spawn items on zombies: items randomly transform into different items upon pickup
+#only if I spawn items on zombies: player spawns with items in their inventory

@@ -89,6 +89,14 @@ class struc_Assets:
 		}
 
 
+		#audio
+		self.music_menu = "data/audio/Beethoven_Virus_8-Bit_Remix.mp3"
+		self.sound_hit = pygame.mixer.Sound("data/audio/Hit_Hurt.wav") 
+		self.sound_explode = pygame.mixer.Sound("data/audio/Explosion.wav")
+		self.sound_lightning = pygame.mixer.Sound("data/audio/Explosion7.wav")
+		self.sound_confuse = pygame.mixer.Sound("data/audio/Powerup.wav")
+
+
 
 #OBJECTS
 class obj_Actor:
@@ -418,6 +426,8 @@ class com_Creature:
 			damage_dealt = 0
 		game_message(self.name_instance + " attacks " + TARGET.creature.name_instance, constants.COLOR_WHITE)
 		TARGET.creature.take_damage(damage_dealt)
+		if damage_dealt > 0:
+			pygame.mixer.Sound.play(ASSETS.sound_hit)
 
 	def take_damage(self, damage):
 		self.hp -= damage
@@ -462,6 +472,14 @@ class com_Item:
 		self.use_function = use_function
 		self.use_func_helper = use_func_helper
 		self.current_container = None
+		# self.stackable = stackable
+		# if self.stackable:
+		# 	@property
+		# 	def quantity(self):
+		# 		if self.current_container:
+		# 			for item in current_container.inventory:
+		# 				if item.item == self
+			
 	#pick up item
 	def pick_up(self, actor):
 		if actor.container:
@@ -743,6 +761,7 @@ def map_calculate_fov():
 		libtcod.map_compute_fov(FOV_MAP, PLAYER.x, PLAYER.y, constants.SIGHT_RADIUS, constants.FOV_LIGHT_WALLS, constants.FOV_ALGO)
 
 def map_find_line(coords_a, coords_b):
+	#finds a line betweeen two points, and returns a list of tiles in the line
 	x1, y1 = coords_a
 	x2, y2 = coords_b
 
@@ -761,6 +780,7 @@ def map_find_line(coords_a, coords_b):
 	return coords_list
 
 def map_find_radius(coords, radius):
+	#finds a circle centered on a point on the map and returns all of the tiles in the circle
 	center_x, center_y = coords
 	tile_list = []
 
@@ -780,6 +800,7 @@ def map_find_radius(coords, radius):
 #DRAWING
 
 def draw_game():
+	#draws all of the objects that appear on the screen during normal play
 	global SURFACE_MAIN, SURFACE_MAP, CAMERA
 	#Clear the surface
 	SURFACE_MAIN.fill(constants.COLOR_DEFAULT_BG)
@@ -797,6 +818,7 @@ def draw_game():
 	draw_messages()
 
 def draw_map(map_to_draw):
+	#draws the map
 	for x in range(0, constants.MAP_WIDTH):
 		for y in range(0, constants.MAP_HEIGHT):
 
@@ -821,10 +843,11 @@ def draw_map(map_to_draw):
 					SURFACE_MAP.blit(ASSETS.S_FLOOR_EXPLORED[0], (x*constants.CELL_WIDTH, y*constants.CELL_HEIGHT))
 
 def draw_debug():
+	#displayss an fps counter
 	draw_text(SURFACE_MAIN, "FPS: " + str(int(CLOCK.get_fps())), (0, 0), constants.COLOR_WHITE, constants.COLOR_BLACK)
 
 def draw_messages():
-	
+	#draws a log of all of the messages in the game
 	if len(GAME.message_history) <= constants.NUM_MESSAGES:
 		to_draw = GAME.message_history
 	else:
@@ -850,6 +873,7 @@ def draw_text(display_surface, text, text_location, text_color, back_color = Non
 
 
 def draw_inspect_rect(coords, tile_color = constants.COLOR_RED, tile_alpha = 150, mark = None):
+	#this function draws a square at coords, somtimes with a text symbol marking it
 	x, y = coords
 	new_x = x*constants.CELL_WIDTH
 	new_y = y*constants.CELL_HEIGHT
@@ -862,7 +886,7 @@ def draw_inspect_rect(coords, tile_color = constants.COLOR_RED, tile_alpha = 150
 	
 	SURFACE_MAP.blit(new_surface, (new_x, new_y))
 
-#Helpers
+#HELPERS
 
 def helper_text_objects(incoming_text, incoming_color, incoming_BG, font):
 	if incoming_BG:
@@ -881,7 +905,127 @@ def helper_text_width(font):
 	font_rect = font_object.get_rect()
 	return font_rect.width
 
-#menus
+def helper_scroll_down(selected_line, starting_line, ending_line, max_lines, print_list):
+	if selected_line == None or selected_line >= (len(print_list)) or selected_line >= ending_line-1:
+		if selected_line != None and selected_line >= ending_line-1 and selected_line <= (len(print_list)-2):
+			starting_line += 1
+			selected_line += 1
+			if max_lines < len(print_list):
+				max_lines += 1
+		else:
+			selected_line = 0
+			if starting_line != 0:
+				starting_line = 0
+				max_lines = 14
+	else:
+		selected_line += 1
+	return (selected_line, starting_line, max_lines)
+
+def helper_scroll_up(selected_line, starting_line, ending_line, max_lines, print_list):
+	if selected_line == None or selected_line == 0 or selected_line <= starting_line:
+		if selected_line != None and selected_line <= starting_line and selected_line > 0:
+			starting_line -= 1
+			selected_line -= 1
+			if max_lines > 14:
+				max_lines -= 1
+			else:
+				starting_line = 0
+				max_lines = 13
+		else:
+			selected_line = len(print_list)-1
+			max_lines = len(print_list)
+			if (len(print_list)) > 14:
+				starting_line = max_lines-14
+			else:
+				max_lines = len(print_list)
+	else:
+		selected_line -= 1
+	return (selected_line, starting_line, max_lines)
+
+
+
+#UI
+class ui_button:
+	def __init__(self, surface, button_text, size, coords, box_color_mouseover = constants.COLOR_GREEN, box_color_default = constants.COLOR_BLUE, text_color_mouseover = constants.COLOR_BLACK, text_color_default = constants.COLOR_WHITE):
+		self.surface = surface
+		self.button_text = button_text
+		self.size = size
+		self.coords = coords
+		self.c_box_mo = box_color_mouseover
+		self.c_box_def = box_color_default
+		self.c_box_cur = self.c_box_def
+		self.c_text_mo = text_color_mouseover
+		self.c_text_def = text_color_default
+		self.c_text_cur = self.c_text_def
+		self.rect = pygame.Rect(coords, size)
+		self.rect.center = coords
+
+	def update(self, player_input):
+		mouse_pos, events_list = player_input
+		mouse_x, mouse_y = mouse_pos
+		mouse_clicked = False
+
+		mouse_over = (mouse_x >= self.rect.left and mouse_x <= self.rect.right and mouse_y >= self.rect.top and mouse_y <= self.rect.bottom)
+		
+		if mouse_over:
+			self.c_box_cur = self.c_box_mo
+			self.c_text_cur = self.c_text_mo
+		else:
+			self.c_box_cur = self.c_box_def
+			self.c_text_cur = self.c_text_def
+
+		for event in events_list:
+			if event.type == pygame.MOUSEBUTTONDOWN:
+				if event.button == 1:
+					mouse_clicked = True
+
+		if mouse_over and mouse_clicked:
+			return True
+		else:
+			return False
+
+		
+	def draw(self):
+		pygame.draw.rect(self.surface, self.c_box_cur, self.rect)
+		draw_text(self.surface, self.button_text, self.coords, self.c_text_cur, center = True)
+
+
+
+
+#MENUS
+def menu_main():
+	game_initialize()
+	menu_running = True
+
+	title_y = constants.CAM_HEIGHT/2 - 40
+	title_text = "Sexy Roguelike"
+	build = "INDEV 1.0"
+	test_button = ui_button(SURFACE_MAIN, "Start Game", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+20))
+	pygame.mixer.music.load(ASSETS.music_menu)
+	pygame.mixer.music.play(-1)
+	while menu_running == True:
+		SURFACE_MAIN.fill(constants.COLOR_BLACK)
+		
+		mouse_pos = pygame.mouse.get_pos()
+		menu_events = pygame.event.get()
+		game_input = (mouse_pos, menu_events)
+		for event in menu_events:
+			if event.type == pygame.QUIT:
+				menu_running = False
+
+		if test_button.update(game_input):
+			pygame.mixer.music.stop()
+			game_start()
+
+		draw_text(SURFACE_MAIN, title_text, (constants.CAM_WIDTH/2, title_y), constants.COLOR_WHITE, center = True)
+		draw_text(SURFACE_MAIN, build, (0, 0), constants.COLOR_WHITE, font = constants.FONT_MESSAGES)
+		test_button.draw()
+		pygame.display.flip()
+		
+	pygame.quit()
+	exit()
+				
+
 def menu_pause():
 	#This menu pauses the game and displays a simple message
 	menu_Open = True
@@ -904,9 +1048,8 @@ def menu_pause():
 		pygame.display.flip()
 		CLOCK.tick(constants.FPS_LIMIT)
 
-def menu_inventory():
+def menu_inventory(target_inv):
 	inv_Open = True
-
 	menu_width = 216
 	menu_height = 216
 	menu_x = (CAMERA.width/2) - menu_width/2
@@ -921,7 +1064,7 @@ def menu_inventory():
 		#clear the menu
 		local_inventory_surface.fill(constants.COLOR_BLACK)
 		#register changes
-		print_list = [obj.display_name for obj in PLAYER.container.inventory]
+		print_list = [obj.display_name for obj in target_inv]
 		inventory_events = pygame.event.get()
 		mouse_x, mouse_y = pygame.mouse.get_pos()
 		rel_mouse_x = mouse_x - menu_x
@@ -940,43 +1083,22 @@ def menu_inventory():
 				if event.key == pygame.K_g or event.key == pygame.K_ESCAPE:
 					inv_Open = False
 				if event.key == pygame.K_s:
-					if selected_line == None or selected_line >= (len(print_list)) or selected_line >= ending_line-1:
-						if selected_line != None and selected_line >= ending_line-1 and selected_line <= (len(print_list)-2):
-							starting_line += 1
-							selected_line += 1
-							if max_lines < len(print_list):
-								max_lines += 1
-						else:
-							selected_line = 0
-							if starting_line != 0:
-								starting_line = 0
-								max_lines = 14
-					else:
-						selected_line += 1
+					selected_line, starting_line, max_lines = helper_scroll_down(selected_line, starting_line, ending_line, max_lines, print_list)
 				if event.key == pygame.K_w:
-					if selected_line == None or selected_line == 0 or selected_line <= starting_line:
-						if selected_line != None and selected_line == starting_line and selected_line != 0:
-							starting_line -= 1
-							selected_line -= 1
-							if max_lines > 14:
-								max_lines -= 1
-							if starting_line != 0:
-								starting_line = 0
-								max_lines = 13
-						else:
-							selected_line = len(print_list)-1
-							max_lines = len(print_list)
-							if (len(print_list)-1) > 14:
-								starting_line = max_lines-14
-							else:
-								max_lines = len(print_list)
-					else:
-						selected_line -= 1
+					selected_line, starting_line, max_lines = helper_scroll_up(selected_line, starting_line, ending_line, max_lines, print_list)
 				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
-					PLAYER.container.inventory[selected_line].item.use()
-					inv_Open = False
+					if selected_line == None:
+						selected_line = 0
+					if target_inv == PLAYER.container.inventory:
+						target_inv[selected_line].item.use()
+						inv_Open = False
+					else:
+						target_inv[selected_line].item.pick_up(PLAYER)
+						target_inv.pop(selected_line)
 				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
-						PLAYER.container.inventory[selected_line].item.drop(PLAYER.x, PLAYER.y)
+					if selected_line == None:
+						selected_line = 0
+					target_inv[selected_line].item.drop(PLAYER.x, PLAYER.y)
 
 				print(starting_line)
 				print(selected_line)
@@ -987,7 +1109,7 @@ def menu_inventory():
 				if event.button == 1:
 					if mouse_in_window and selected_line <= (len(print_list)-1):
 						inv_Open = False
-						PLAYER.container.inventory[selected_line].item.use()
+						target_inv[selected_line].item.use()
 		
 		#draw menu
 		if len(print_list) < max_lines:
@@ -1113,6 +1235,7 @@ def cast_heal(target, healing = 6):
 			return "cancelled"
 		else:
 			target.creature.heal(healing)
+
 			return "healed"
 		
 	else:
@@ -1133,6 +1256,7 @@ def cast_lightning(caster, T_Range_Damage = (20, 10)):
 		target = map_creature_check(x, y)
 		if target and target is not caster:
 			target.creature.take_damage(damage)
+	pygame.mixer.Sound.play(ASSETS.sound_lightning)
 	return "cast"
 
 def cast_fireball(caster, T_range_radius_damage = (12, 3, 10)):
@@ -1153,6 +1277,7 @@ def cast_fireball(caster, T_range_radius_damage = (12, 3, 10)):
 		game_message("A magnificant ball of fire sails away from your hand, slamming into the ground and creating a near-blinding conflagration that engulfs the air far around the point of impact. It's astounding to look-at, though harms no-one.")
 	if creature_hit == True:
 		game_message("You hear howls of pain and the sizzling of flesh as all caught in the fireball's explosion burn.")
+	pygame.mixer.Sound.play(ASSETS.sound_explode)
 	return "cast"
 
 def cast_confusion(caster, duration = 5):
@@ -1173,7 +1298,7 @@ def cast_confusion(caster, duration = 5):
 #GENERATORS
 
 #items
-def gen_item(coords, forced_range = (1, 11)):
+def gen_item(coords, forced_range = (1, 12)):
 	global GAME
 	r_min, r_max = forced_range
 	generated_item = libtcod.random_get_int(0, r_min, r_max)
@@ -1219,7 +1344,9 @@ def gen_confusion_scroll(coords):
 def gen_healing_potion(coords):
 	x, y = coords
 	healing = libtcod.random_get_int(0, 2, 10)
-	returned_object = obj_Actor(x, y, "S_HEALTH_POTION", "Potion", "Healing Potion", item = com_Item(use_function = cast_heal, use_func_helper = healing))	
+	returned_object = obj_Actor(x, y, "S_HEALTH_POTION", "Potion", "Healing Potion", item = com_Item(use_function = cast_heal, use_func_helper = healing))
+	GAME.current_objects.insert(1, returned_object)
+	return returned_object	
 
 def gen_weapon_sword(coords):
 	x, y = coords
@@ -1257,20 +1384,20 @@ def gen_zombie(coords):
 	x, y = coords
 	creature_name = libtcod.namegen_generate("Fantasy female")
 	carried_items = []
-	# num_carried_items = libtcod.random_get_int(0, 0, 8)
-	# num_carried_items -= 3
-	# if num_carried_items > 0:
-	# 	for item in range(num_carried_items):
-	# 		new_item = gen_item((0, 0), (1, 11))
-	# 		carried_items.append(new_item)
-	# 		GAME.current_objects.append(new_item)
-	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie())
-	# if len(carried_items) >= 1:
-	# 	for obj in carried_items:
-	# 		if obj != None:
-	# 			obj.item.pick_up(returned_object)
-	# 			if obj.equipment:
-	# 				obj.item.use()
+	num_carried_items = libtcod.random_get_int(0, 0, 8)
+	num_carried_items -= 3
+	if num_carried_items > 0:
+		for item in range(num_carried_items):
+			new_item = gen_item((0, 0), (1, 11))
+			carried_items.append(new_item)
+			GAME.current_objects.append(new_item)
+	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container())
+	if len(carried_items) >= 1:
+		for item in carried_items:
+			if item != None and item.item:
+				item.item.pick_up(returned_object)
+				if item.equipment:
+					item.item.use()
 	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
@@ -1297,8 +1424,8 @@ def gen_stairs(coords, downwards):
 		return stairs
 
 
-#GAME FUNCTIONS
 
+#GAME FUNCTIONS
 def game_main_loop():
 	#In this function, we loop the main game
 	global FOV_CALCULATE
@@ -1367,11 +1494,6 @@ def game_initialize():
 	FOV_CALCULATE = True
 
 	ASSETS = struc_Assets()
-	
-	try:
-		load_game()
-	except:
-	 	game_new()
 
 def game_new():
 	global GAME
@@ -1407,12 +1529,16 @@ def handle_player_input():
 				return "player-moved"
 			if event.key == pygame.K_e:
 				objects_at_player = map_objects_at_coords(PLAYER.x, PLAYER.y)
+				items_at_player = []
 				for obj in objects_at_player:
 					if obj.item:
-						obj.item.pick_up(PLAYER)
-				for obj in objects_at_player:
-					if obj.stairs:
-						obj.stairs.use()
+						items_at_player.append(obj)
+				if len(items_at_player) > 0:
+					menu_inventory(items_at_player)
+				else:
+					for obj in objects_at_player:
+						if obj.stairs:
+							obj.stairs.use()
 				
 			if event.key == pygame.K_f:
 				if len(PLAYER.container.inventory) > 0:
@@ -1420,7 +1546,7 @@ def handle_player_input():
 			if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
 				menu_pause()
 			if event.key == pygame.K_g:
-				menu_inventory()
+				menu_inventory(PLAYER.container.inventory)
 			if event.key == pygame.K_v:
 				print(menu_tile_select())
 				return "player-looked"
@@ -1471,6 +1597,12 @@ def load_game():
 		if obj.container:
 			for item in obj.container.inventory:
 				item.animation_init()
+def game_start():
+	try:
+		load_game()
+	except:
+	 	game_new()
+	game_main_loop()
 
 def game_exit():
 	save_game()
@@ -1479,5 +1611,4 @@ def game_exit():
 
 #EXECUTE GAME
 if __name__ == "__main__":
-	game_initialize()
-	game_main_loop()
+	menu_main()
