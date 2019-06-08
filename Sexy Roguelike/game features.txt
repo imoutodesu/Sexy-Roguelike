@@ -14,12 +14,9 @@ Map
 Character
 	Classes
 		Wizard
-			Low Physical Stats
-			Access to Powerful Spells that regenerate after camping
 		Rogue
 			Stealth Based
-		Warlock
-			Access to more magic
+		
 	Stats
 		Force
 			Strength

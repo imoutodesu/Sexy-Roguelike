@@ -31,6 +31,10 @@ class struc_Tile:
 class struc_Assets:
 	"""All of the assets in the game"""
 	def __init__(self):
+		self.load_assets()
+		self.sound_adjust()
+	
+	def load_assets(self):
 		#spritesheets
 		self.player0_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player0.png")
 		self.player1_sheet = obj_SpriteSheet("data/DawnLike/Characters/Player1.png")
@@ -90,11 +94,31 @@ class struc_Assets:
 
 
 		#audio
+		self.sound_list = []
+		#music
 		self.music_menu = "data/audio/Beethoven_Virus_8-Bit_Remix.mp3"
-		self.sound_hit = pygame.mixer.Sound("data/audio/Hit_Hurt.wav") 
-		self.sound_explode = pygame.mixer.Sound("data/audio/Explosion.wav")
-		self.sound_lightning = pygame.mixer.Sound("data/audio/Explosion7.wav")
-		self.sound_confuse = pygame.mixer.Sound("data/audio/Powerup.wav")
+		#sound effects
+		self.sound_hit = self.add_sound("data/audio/Hit_Hurt.wav") 
+		self.sound_explode = self.add_sound("data/audio/Explosion.wav")
+		self.sound_lightning = self.add_sound("data/audio/Explosion7.wav")
+		self.sound_confuse = self.add_sound("data/audio/Powerup.wav")
+	
+	def add_sound(self, path):
+		new_sound = pygame.mixer.Sound(path)
+		self.sound_list.append(new_sound)
+		return new_sound
+
+	def sound_adjust(self):
+		for sound in self.sound_list:
+			sound.set_volume(PREFERENCES.vol_sound)
+		pygame.mixer.music.set_volume(PREFERENCES.vol_music)
+
+class struc_Preferences:
+	def __init__(self):
+		self.vol_sound = 0.5
+		self.vol_music = 0.5
+
+
 
 
 
@@ -111,7 +135,8 @@ class obj_Actor:
 				container = None,
 				item = None,
 				equipment = None,
-				stairs = None):
+				stairs = None,
+				state = None):
 		
 		self.x = x #map address not pixel address
 		self.y = y
@@ -125,6 +150,7 @@ class obj_Actor:
 
 		self.object_type = object_type
 		self.object_name = object_name
+		self.state = state
 		
 		self.creature = creature
 		if creature:
@@ -492,14 +518,14 @@ class com_Item:
 				actor.container.inventory.append(self.owner)
 				GAME.current_objects.remove(self.owner)
 				self.current_container = actor.container
-				print(self.current_container.owner.object_name)
 					
 	#drop item
 	def drop(self, new_x, new_y):
 		if self.owner.equipment:
 			self.owner.equipment.unequip()
 		GAME.current_objects.insert(1, self.owner)
-		self.current_container.inventory.remove(self.owner)
+		if self.current_container != None:
+			self.current_container.inventory.remove(self.owner)
 		self.owner.x = new_x
 		self.owner.y = new_y
 		self.current_container = None
@@ -556,7 +582,7 @@ class com_Equipment:
 			game_message("Item equipped")
 	def unequip(self):
 		self.equipped = False
-		if self.owner.item.current_container.owner == PLAYER:
+		if self.owner.item.current_container == PLAYER.container:
 			game_message("Item unequipped")
 
 class com_Container:
@@ -634,9 +660,9 @@ class com_Stairs:
 def death_monster(monster):
 	game_message(monster.creature.name_instance + " the " + monster.object_name + " has been slain!", constants.COLOR_WHITE)
 	if monster.container:
-		if len(monster.container.inventory) >= 1:
-			for item in monster.container.inventory:
-				item.item.drop(monster.x, monster.y)
+		if len(monster.container.inventory) > 0:
+			for thing in monster.container.inventory:
+				thing.item.drop(monster.x, monster.y)
 	monster.creature = None
 	monster.ai = None
 	monster.animation_key = "S_RIBS"
@@ -645,6 +671,14 @@ def death_monster(monster):
 	monster.object_name += " Corpse"
 	monster.item = com_Item()
 	monster.item.owner = monster
+
+def death_player_hardcore(player):
+	player.state = "DEAD"
+	SURFACE_MAIN.fill(constants.COLOR_BLACK)
+	draw_text(SURFACE_MAIN,"YOU DIED!",(constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2), constants.COLOR_RED, font = constants.FONT_TITLE, center = True)
+	pygame.display.update()
+	pygame.time.wait(5000)
+
 
 
 
@@ -989,8 +1023,42 @@ class ui_button:
 		pygame.draw.rect(self.surface, self.c_box_cur, self.rect)
 		draw_text(self.surface, self.button_text, self.coords, self.c_text_cur, center = True)
 
+class ui_slider:
+	def __init__(self, surface, size, coords, parameter_value = 0.50):
+		self.surface = surface
+		self.size = size
+		self.current_value = parameter_value
+		self.bg_rect = pygame.Rect(coords, size)
+		self.bg_rect.center = coords
+		self.guard_rect = pygame.Rect(self.bg_rect.left-4, self.bg_rect.top-4,self.bg_rect.width+8,self.bg_rect.height+8)
+		self.fg_rect = pygame.Rect((self.bg_rect.topleft), (int(self.bg_rect.width*self.current_value),self.bg_rect.height))
+		self.grip_tab = pygame.Rect(self.fg_rect.topright,(4, self.bg_rect.height))
 
+	def update(self, player_input):
+		mouse_pos, events_list = player_input
+		mouse_x, mouse_y = mouse_pos
+		mouse_down = pygame.mouse.get_pressed()[0] == 1
 
+		mouse_over = (mouse_x >= self.bg_rect.left and mouse_x <= self.bg_rect.right and mouse_y >= self.bg_rect.top and mouse_y <= self.bg_rect.bottom)
+		
+		for event in events_list:
+			if event.type == pygame.MOUSEBUTTONDOWN:
+				if event.button == 1:
+					mouse_clicked = True
+		if mouse_over and mouse_down:
+			self.current_value = (mouse_x - self.bg_rect.left)/self.bg_rect.width
+			self.fg_rect.width = self.bg_rect.width*self.current_value
+			self.grip_tab.topleft = self.fg_rect.topright
+			return self.current_value
+		else:
+			return self.current_value
+
+		
+	def draw(self):
+		pygame.draw.rect(self.surface, constants.COLOR_DEFAULT_BG, self.guard_rect)
+		pygame.draw.rect(self.surface, constants.COLOR_BLUE, self.bg_rect)
+		pygame.draw.rect(self.surface, constants.COLOR_GREEN, self.fg_rect)
+		pygame.draw.rect(self.surface, constants.COLOR_BLACK, self.grip_tab)
 
 #MENUS
 def menu_main():
@@ -999,8 +1067,11 @@ def menu_main():
 
 	title_y = constants.CAM_HEIGHT/2 - 40
 	title_text = "Sexy Roguelike"
-	build = "INDEV 1.0"
-	test_button = ui_button(SURFACE_MAIN, "Start Game", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+20))
+	build = "INDEV 2.0"
+	new_game_button = ui_button(SURFACE_MAIN, "New Game", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+20))
+	load_game_button = ui_button(SURFACE_MAIN, "Load Game", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+60))
+	options_button = ui_button(SURFACE_MAIN, "Options", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+100))
+	quit_button = ui_button(SURFACE_MAIN, "Quit", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+140))
 	pygame.mixer.music.load(ASSETS.music_menu)
 	pygame.mixer.music.play(-1)
 	while menu_running == True:
@@ -1012,19 +1083,69 @@ def menu_main():
 		for event in menu_events:
 			if event.type == pygame.QUIT:
 				menu_running = False
-
-		if test_button.update(game_input):
+		if new_game_button.update(game_input):
 			pygame.mixer.music.stop()
 			game_start()
+		if load_game_button.update(game_input):
+			pygame.mixer.music.stop()
+			game_continue()
+		if quit_button.update(game_input):
+			game_exit()
+		if options_button.update(game_input):
+			menu_main_options()
 
-		draw_text(SURFACE_MAIN, title_text, (constants.CAM_WIDTH/2, title_y), constants.COLOR_WHITE, center = True)
+		draw_text(SURFACE_MAIN, title_text, (constants.CAM_WIDTH/2, title_y), constants.COLOR_WHITE, font = constants.FONT_TITLE, center = True)
 		draw_text(SURFACE_MAIN, build, (0, 0), constants.COLOR_WHITE, font = constants.FONT_MESSAGES)
-		test_button.draw()
+		new_game_button.draw()
+		load_game_button.draw()
+		options_button.draw()
+		quit_button.draw()
 		pygame.display.flip()
 		
-	pygame.quit()
-	exit()
+	game_exit()
 				
+def menu_main_options():
+	options_menu_surface = pygame.Surface((constants.CAM_WIDTH, constants.CAM_HEIGHT))
+	options_menu_rect = pygame.Rect((0,0), (constants.CAM_WIDTH, constants.CAM_HEIGHT))
+	options_menu_rect.center = (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2)
+	menu_open = True
+	return_button = ui_button(options_menu_surface, "Return", (150, 35), (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+20))
+	sound_slider = ui_slider(options_menu_surface, (150, 35), (constants.CAM_WIDTH/2+150, constants.CAM_HEIGHT/2+60), parameter_value = PREFERENCES.vol_sound)
+	music_slider = ui_slider(options_menu_surface, (150, 35), (constants.CAM_WIDTH/2+150, constants.CAM_HEIGHT/2+100), parameter_value = PREFERENCES.vol_music)
+	sound_check = False
+	while menu_open:
+		mouse_pos = pygame.mouse.get_pos()
+		menu_events = pygame.event.get()
+		game_input = (mouse_pos, menu_events)
+		for event in menu_events:
+			if event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_ESCAPE:
+					menu_open = False
+			if event.type == pygame.QUIT:
+				game_exit()
+				menu_open = False
+			if event.type == pygame.MOUSEBUTTONDOWN:
+				if event.button == 1:
+					prev_vol_s = PREFERENCES.vol_sound
+					sound_check = True
+			if event.type == pygame.MOUSEBUTTONUP:
+				if event.button == 1:
+					if sound_check and prev_vol_s != PREFERENCES.vol_sound:
+						pygame.mixer.Sound.play(ASSETS.sound_confuse)
+		if return_button.update(game_input):
+			break
+		options_menu_surface.fill(constants.COLOR_BLACK)
+		return_button.draw()
+		sound_slider.draw()
+		draw_text(options_menu_surface, "Sound", (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+60), constants.COLOR_WHITE, font = constants.FONT_MESSAGES, center = True)
+		music_slider.draw()
+		draw_text(options_menu_surface, "Music", (constants.CAM_WIDTH/2, constants.CAM_HEIGHT/2+100), constants.COLOR_WHITE, font = constants.FONT_MESSAGES, center = True)
+		PREFERENCES.vol_sound = sound_slider.update(game_input)
+		PREFERENCES.vol_music = music_slider.update(game_input)
+		ASSETS.sound_adjust()
+		SURFACE_MAIN.blit(options_menu_surface, (0,0))
+		pygame.display.update()
+
 
 def menu_pause():
 	#This menu pauses the game and displays a simple message
@@ -1086,24 +1207,27 @@ def menu_inventory(target_inv):
 					selected_line, starting_line, max_lines = helper_scroll_down(selected_line, starting_line, ending_line, max_lines, print_list)
 				if event.key == pygame.K_w:
 					selected_line, starting_line, max_lines = helper_scroll_up(selected_line, starting_line, ending_line, max_lines, print_list)
-				if event.key == pygame.K_e and selected_line <= (len(print_list)-1):
+				if event.key == pygame.K_e and len(print_list) > 0:
 					if selected_line == None:
 						selected_line = 0
+					if selected_line > len(print_list) - 1:
+						selected_line = len(print_list) - 1
 					if target_inv == PLAYER.container.inventory:
+						if not target_inv[selected_line].equipment:
+							inv_Open = False
 						target_inv[selected_line].item.use()
-						inv_Open = False
 					else:
 						target_inv[selected_line].item.pick_up(PLAYER)
 						target_inv.pop(selected_line)
-				if event.key == pygame.K_f and selected_line <= (len(print_list)-1):
+						if len(target_inv) == 0:
+							inv_Open = False
+				if event.key == pygame.K_f and len(print_list) > 0:
 					if selected_line == None:
 						selected_line = 0
-					target_inv[selected_line].item.drop(PLAYER.x, PLAYER.y)
-
-				print(starting_line)
-				print(selected_line)
-				print(ending_line)
-				print(len(print_list)-1)
+					if selected_line > len(print_list) - 1:
+						selected_line = len(print_list) - 1
+					if target_inv == PLAYER.container.inventory:
+						target_inv[selected_line].item.drop(PLAYER.x, PLAYER.y)
 			
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
@@ -1291,6 +1415,7 @@ def cast_confusion(caster, duration = 5):
 		target.ai = com_AI_Confused(old_ai = old_ai, num_turns = duration)
 		target.ai.owner = target
 		game_message("The creature's eyes glaze over.", msg_color = constants.COLOR_GREEN)
+		pygame.mixer.Sound.play(ASSETS.sound_confuse)
 		return "confused"
 	else:
 		return "cancelled"
@@ -1313,7 +1438,7 @@ def gen_item(coords, forced_range = (1, 12)):
 		new_item = gen_weapon_sword(coords)
 	elif generated_item == 9 or generated_item == 10:
 		new_item = gen_armour_shield(coords)
-	elif generated_item == 11:
+	elif generated_item == 11 or generated_item == 12:
 		new_item = gen_healing_potion(coords)
 	return new_item
 
@@ -1367,7 +1492,8 @@ def gen_armour_shield(coords):
 def gen_player(coords):
 	global PLAYER, GAME
 	x, y = coords
-	PLAYER = obj_Actor(x, y, "A_PLAYER", "Elf", "Player", creature = com_Creature("Arion", base_atk = 2), container = com_Container())
+	player_container = com_Container
+	PLAYER = obj_Actor(x, y, "A_PLAYER", "Elf", "Player", creature = com_Creature("Arion", base_atk = 2, death_function = death_player_hardcore), container = player_container())
 	GAME.current_objects.append(PLAYER)
 	return PLAYER
 
@@ -1382,28 +1508,36 @@ def gen_undead(coords, forced_range = (1, 100)):
 
 def gen_zombie(coords):
 	x, y = coords
-	creature_name = libtcod.namegen_generate("Fantasy female")
+	sex_gen = libtcod.random_get_int(0, 0, 1)
+	if sex_gen == 0:
+		gender = "female"
+	else:
+		gender = "male"
+	creature_name = libtcod.namegen_generate("Fantasy %s" % gender)
+	
+	num_carried_items = libtcod.random_get_int(0, -3, 5)
 	carried_items = []
-	num_carried_items = libtcod.random_get_int(0, 0, 8)
-	num_carried_items -= 3
 	if num_carried_items > 0:
 		for item in range(num_carried_items):
-			new_item = gen_item((0, 0), (1, 11))
-			carried_items.append(new_item)
-			GAME.current_objects.append(new_item)
-	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container())
-	if len(carried_items) >= 1:
-		for item in carried_items:
-			if item != None and item.item:
-				item.item.pick_up(returned_object)
-				if item.equipment:
-					item.item.use()
+			carried_items.append(gen_item((x, y), (1, 11)))
+	returned_object = obj_Actor(x, y, "A_ZOMBIE", "Undead", "Zombie", creature = com_Creature(creature_name, death_function = death_monster), ai = com_AI_zombie(), container = com_Container(inventory = carried_items))
+	for thing in carried_items:
+		GAME.current_objects.remove(thing)
+	for thing in returned_object.container.inventory:
+		thing.item.current_container = returned_object.container
+		if thing.equipment:
+			thing.equipment.equip()
 	GAME.current_objects.insert(1, returned_object)
 	return returned_object
 
 def gen_zogre(coords):
 	x, y = coords
-	creature_name = libtcod.namegen_generate("Celtic male")
+	sex_gen = libtcod.random_get_int(0, 1, 10)
+	if sex_gen == 1:
+		gender = "female"
+	else:
+		gender = "male"
+	creature_name = libtcod.namegen_generate("Celtic %s" % gender)
 	returned_object = obj_Actor(x, y, "A_ZOGRE", "Undead", "Zogre", creature = com_Creature(creature_name, hp = 15, base_atk = 5, base_def = 1, death_function = death_monster), ai = com_AI_zombie())
 	GAME.current_objects.insert(1, returned_object)
 	return returned_object
@@ -1455,18 +1589,22 @@ def game_main_loop():
 			#calculates the FOV
 			map_calculate_fov()
 
+		if PLAYER.state is "DEAD":
+			pygame.mixer.music.load(ASSETS.music_menu)
+			pygame.mixer.music.play(-1)
+			game_quit = True
+
 		CLOCK.tick(constants.FPS_LIMIT)
 		#draw the game
 		map_calculate_fov()
 		draw_game()
 		pygame.display.flip()
 
-	#TODO quit the game
-	game_exit()
+	
 
 def game_initialize():
 	"""This functions initiatlizes the main window in pygame"""
-	global SURFACE_MAIN, SURFACE_MAP, PLAYER, FOV_CALCULATE, CLOCK, ASSETS, CAMERA
+	global SURFACE_MAIN, SURFACE_MAP, PLAYER, FOV_CALCULATE, CLOCK, ASSETS, CAMERA, PREFERENCES
 
 	pygame.init()
 	pygame.key.set_repeat(555, 85)	
@@ -1492,7 +1630,12 @@ def game_initialize():
 	SURFACE_MAP = pygame.Surface((constants.GAME_WIDTH, constants.GAME_HEIGHT))
 
 	FOV_CALCULATE = True
-
+	try:
+		load_preferences()
+		print("Preferences Loaded")
+	except:
+		PREFERENCES = struc_Preferences()
+		print("Preferences generated")
 	ASSETS = struc_Assets()
 
 def game_new():
@@ -1585,6 +1728,12 @@ def save_game():
 	#open a new empty shelve (possibly overwriting an old one) to write the game data
 	with gzip.open('data\save_data\savegame', 'wb') as file:
 		pickle.dump([GAME, PLAYER], file)
+		print("game saved")
+	file.close()
+def preferences_save():
+	with gzip.open('data\save_data\preferences', 'wb') as file:
+		pickle.dump(PREFERENCES, file)
+		print("preferences saved")
 	file.close()
 
 def load_game():
@@ -1597,15 +1746,30 @@ def load_game():
 		if obj.container:
 			for item in obj.container.inventory:
 				item.animation_init()
-def game_start():
+def load_preferences():
+	global PREFERENCES
+	
+	with gzip.open('data\save_data\preferences', 'rb') as file:
+		PREFERENCES = pickle.load(file)
+def game_continue():
 	try:
 		load_game()
 	except:
 	 	game_new()
 	game_main_loop()
+def game_start():
+	game_new()
+	game_main_loop()
 
 def game_exit():
-	save_game()
+	try:
+		save_game()
+	except:
+		pass
+	try:
+		preferences_save()
+	except:
+		pass
 	pygame.quit()
 	exit()
 
